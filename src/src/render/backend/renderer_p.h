@@ -75,6 +75,7 @@
 #include <Qt3DRender/private/genericlambdajob_p.h>
 #include <Qt3DRender/private/updatemeshtrianglelistjob_p.h>
 #include <Qt3DRender/private/filtercompatibletechniquejob_p.h>
+#include <Qt3DRender/private/renderercache_p.h>
 
 #include <QHash>
 #include <QMatrix4x4>
@@ -168,7 +169,7 @@ public:
     void releaseGraphicsResources() Q_DECL_OVERRIDE;
 
     void render() Q_DECL_OVERRIDE;
-    void doRender() Q_DECL_OVERRIDE;
+    void doRender(bool scene3dBlocking = false) Q_DECL_OVERRIDE;
     void cleanGraphicsResources() Q_DECL_OVERRIDE;
 
     bool isRunning() const Q_DECL_OVERRIDE { return m_running.load(); }
@@ -233,7 +234,7 @@ public:
 
     inline RenderStateSet *defaultRenderState() const { return m_defaultRenderStateSet; }
 
-    QList<QMouseEvent> pendingPickingEvents() const;
+    QList<QPair<QObject*, QMouseEvent>> pendingPickingEvents() const;
     QList<QKeyEvent> pendingKeyEvents() const;
 
     void addRenderCaptureSendRequest(Qt3DCore::QNodeId nodeId);
@@ -260,6 +261,8 @@ public:
     ViewSubmissionResultData submitRenderViews(const QVector<Render::RenderView *> &renderViews);
 
     QMutex* mutex() { return &m_renderQueueMutex; }
+
+    RendererCache m_cache;
 
 
 #ifdef QT3D_RENDER_UNIT_TESTS
@@ -305,6 +308,7 @@ private:
     QAtomicInt m_lastFrameCorrect;
     QOpenGLContext *m_glContext;
     QOpenGLContext *m_shareContext;
+    mutable QMutex m_shareContextMutex;
     PickBoundingVolumeJobPtr m_pickBoundingVolumeJob;
 
     qint64 m_time;

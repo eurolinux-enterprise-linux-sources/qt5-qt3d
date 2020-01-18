@@ -316,6 +316,8 @@ struct SubRangeSorter
 {
     static void sortSubRange(CommandIt begin, const CommandIt end)
     {
+        Q_UNUSED(begin);
+        Q_UNUSED(end);
         Q_UNREACHABLE();
     }
 };
@@ -379,7 +381,7 @@ void sortByMaterial(QVector<RenderCommand *> &commands, int begin, const int end
     while (begin != end) {
         if (begin + 1 < rangeEnd) {
             std::stable_sort(commands.begin() + begin + 1, commands.begin() + rangeEnd, [] (RenderCommand *a, RenderCommand *b){
-                return a->m_material < b->m_material;
+                return a->m_material.handle() < b->m_material.handle();
             });
         }
         begin = rangeEnd;
@@ -541,14 +543,14 @@ QVector<RenderCommand *> RenderView::buildDrawRenderCommands(const QVector<Entit
 
     for (Entity *node : entities) {
         GeometryRenderer *geometryRenderer = nullptr;
-        HGeometryRenderer geometryRendererHandle = node->componentHandle<GeometryRenderer, 16>();
+        HGeometryRenderer geometryRendererHandle = node->componentHandle<GeometryRenderer>();
         // There is a geometry renderer with geometry
         if ((geometryRenderer = m_manager->geometryRendererManager()->data(geometryRendererHandle)) != nullptr
                 && geometryRenderer->isEnabled()
                 && !geometryRenderer->geometryId().isNull()) {
 
             const Qt3DCore::QNodeId materialComponentId = node->componentUuid<Material>();
-            const HMaterial materialHandle = node->componentHandle<Material, 16>();
+            const HMaterial materialHandle = node->componentHandle<Material>();
             const  QVector<RenderPassParameterData> renderPassData = m_parameters.value(materialComponentId);
             HGeometry geometryHandle = m_manager->lookupHandle<Geometry, GeometryManager, HGeometry>(geometryRenderer->geometryId());
             Geometry *geometry = m_manager->data<Geometry, GeometryManager>(geometryHandle);
@@ -557,7 +559,12 @@ QVector<RenderCommand *> RenderView::buildDrawRenderCommands(const QVector<Entit
             for (const RenderPassParameterData &passData : renderPassData) {
                 // Add the RenderPass Parameters
                 RenderCommand *command = new RenderCommand();
-                command->m_depth = m_data.m_eyePos.distanceToPoint(node->worldBoundingVolume()->center());
+
+                // Project the camera-to-object-center vector onto the camera
+                // view vector. This gives a depth value suitable as the key
+                // for BackToFront sorting.
+                command->m_depth = QVector3D::dotProduct(node->worldBoundingVolume()->center() - m_data.m_eyePos, m_data.m_eyeViewDir);
+
                 command->m_geometry = geometryHandle;
                 command->m_geometryRenderer = geometryRendererHandle;
                 command->m_material = materialHandle;
@@ -709,13 +716,21 @@ QVector<RenderCommand *> RenderView::buildComputeRenderCommands(const QVector<En
 void RenderView::updateMatrices()
 {
     if (m_data.m_renderCameraNode && m_data.m_renderCameraLens && m_data.m_renderCameraLens->isEnabled()) {
-        setViewMatrix(*m_data.m_renderCameraNode->worldTransform());
+        const QMatrix4x4 cameraWorld = *(m_data.m_renderCameraNode->worldTransform());
+        setViewMatrix(m_data.m_renderCameraLens->viewMatrix(cameraWorld));
+
         setViewProjectionMatrix(m_data.m_renderCameraLens->projection() * viewMatrix());
         //To get the eyePosition of the camera, we need to use the inverse of the
         //camera's worldTransform matrix.
         const QMatrix4x4 inverseWorldTransform = viewMatrix().inverted();
         const QVector3D eyePosition(inverseWorldTransform.column(3));
         setEyePosition(eyePosition);
+
+        // Get the viewing direction of the camera. Use the normal matrix to
+        // ensure non-uniform scale works too.
+        QMatrix3x3 normalMat = m_data.m_viewMatrix.normalMatrix();
+        // dir = normalize(QVector3D(0, 0, -1) * normalMat)
+        setEyeViewDirection(QVector3D(-normalMat(2, 0), -normalMat(2, 1), -normalMat(2, 2)).normalized());
     }
 }
 
@@ -726,14 +741,19 @@ void RenderView::setUniformValue(ShaderParameterPack &uniformPack, int nameId, c
     // ShaderData/Buffers would be handled as UBO/SSBO and would therefore
     // not be in the default uniform block
     if (value.valueType() == UniformValue::NodeId) {
-        const Qt3DCore::QNodeId texId = *value.constData<Qt3DCore::QNodeId>();
-        const Texture *tex =  m_manager->textureManager()->lookupResource(texId);
-        if (tex != nullptr) {
-            uniformPack.setTexture(nameId, texId);
-            UniformValue::Texture textureValue;
-            textureValue.nodeId = texId;
-            uniformPack.setUniform(nameId, UniformValue(textureValue));
+        const Qt3DCore::QNodeId *nodeIds = value.constData<Qt3DCore::QNodeId>();
+
+        const int uniformArraySize = value.byteSize() / sizeof(Qt3DCore::QNodeId);
+        for (int i = 0; i < uniformArraySize; ++i) {
+            const Qt3DCore::QNodeId texId = nodeIds[i];
+            const Texture *tex =  m_manager->textureManager()->lookupResource(texId);
+            if (tex != nullptr)
+                uniformPack.setTexture(nameId, i, texId);
         }
+
+        UniformValue textureValue(uniformArraySize * sizeof(int), UniformValue::TextureValue);
+        std::fill(textureValue.data<int>(), textureValue.data<int>() + uniformArraySize, -1);
+        uniformPack.setUniform(nameId, textureValue);
     } else {
         uniformPack.setUniform(nameId, value);
     }

@@ -68,9 +68,9 @@ void ViewportCameraAreaGatherer::visit(FrameGraphNode *node)
         m_leaves.push_back(node);
 }
 
-ViewportCameraAreaTriplet ViewportCameraAreaGatherer::gatherUpViewportCameraAreas(Render::FrameGraphNode *node) const
+ViewportCameraAreaDetails ViewportCameraAreaGatherer::gatherUpViewportCameraAreas(Render::FrameGraphNode *node) const
 {
-    ViewportCameraAreaTriplet vca;
+    ViewportCameraAreaDetails vca;
     vca.viewport = QRectF(0.0f, 0.0f, 1.0f, 1.0f);
 
     while (node) {
@@ -82,9 +82,12 @@ ViewportCameraAreaTriplet ViewportCameraAreaGatherer::gatherUpViewportCameraArea
             case FrameGraphNode::Viewport:
                 vca.viewport = computeViewport(vca.viewport, static_cast<const ViewportNode *>(node));
                 break;
-            case FrameGraphNode::Surface:
-                vca.area = static_cast<const RenderSurfaceSelector *>(node)->renderTargetSize();
+            case FrameGraphNode::Surface: {
+                auto selector = static_cast<const RenderSurfaceSelector *>(node);
+                vca.area = selector->renderTargetSize();
+                vca.surface = selector->surface();
                 break;
+            }
             default:
                 break;
             }
@@ -94,28 +97,31 @@ ViewportCameraAreaTriplet ViewportCameraAreaGatherer::gatherUpViewportCameraArea
     return vca;
 }
 
-QVector<ViewportCameraAreaTriplet> ViewportCameraAreaGatherer::gather(FrameGraphNode *root)
+QVector<ViewportCameraAreaDetails> ViewportCameraAreaGatherer::gather(FrameGraphNode *root)
 {
     // Retrieve all leaves
     visit(root);
-    QVector<ViewportCameraAreaTriplet> vcaTriplets;
+    QVector<ViewportCameraAreaDetails> vcaTriplets;
     vcaTriplets.reserve(m_leaves.count());
 
     // Find all viewport/camera pairs by traversing from leaf to root
     for (Render::FrameGraphNode *leaf : qAsConst(m_leaves)) {
-        ViewportCameraAreaTriplet vcaTriplet = gatherUpViewportCameraAreas(leaf);
-        if (!m_targetCamera.isNull() && vcaTriplet.cameraId != m_targetCamera)
+        ViewportCameraAreaDetails vcaDetails = gatherUpViewportCameraAreas(leaf);
+        if (!m_targetCamera.isNull() && vcaDetails.cameraId != m_targetCamera)
             continue;
-        if (!vcaTriplet.cameraId.isNull() && isUnique(vcaTriplets, vcaTriplet))
-            vcaTriplets.push_back(vcaTriplet);
+        if (!vcaDetails.cameraId.isNull() && isUnique(vcaTriplets, vcaDetails))
+            vcaTriplets.push_back(vcaDetails);
     }
     return vcaTriplets;
 }
 
-bool PickingUtils::ViewportCameraAreaGatherer::isUnique(const QVector<ViewportCameraAreaTriplet> &vcaTriplets, const ViewportCameraAreaTriplet &vca) const
+bool PickingUtils::ViewportCameraAreaGatherer::isUnique(const QVector<ViewportCameraAreaDetails> &vcaList, const ViewportCameraAreaDetails &vca) const
 {
-    for (const ViewportCameraAreaTriplet &triplet : vcaTriplets) {
-        if (vca.cameraId == triplet.cameraId && vca.viewport == triplet.viewport && vca.area == triplet.area)
+    for (const ViewportCameraAreaDetails &listItem : vcaList) {
+        if (vca.cameraId == listItem.cameraId &&
+                vca.viewport == listItem.viewport &&
+                vca.surface == listItem.surface &&
+                vca.area == listItem.area)
             return false;
     }
     return true;
@@ -194,7 +200,7 @@ AbstractCollisionGathererFunctor::~AbstractCollisionGathererFunctor()
 
 AbstractCollisionGathererFunctor::result_type AbstractCollisionGathererFunctor::operator ()(const Entity *entity) const
 {
-    HObjectPicker objectPickerHandle = entity->componentHandle<ObjectPicker, 16>();
+    HObjectPicker objectPickerHandle = entity->componentHandle<ObjectPicker>();
 
     // If the Entity which actually received the hit doesn't have
     // an object picker component, we need to check the parent if it has one ...
@@ -202,7 +208,7 @@ AbstractCollisionGathererFunctor::result_type AbstractCollisionGathererFunctor::
     while (objectPickerHandle.isNull() && parentEntity != nullptr) {
         parentEntity = parentEntity->parent();
         if (parentEntity != nullptr)
-            objectPickerHandle = parentEntity->componentHandle<ObjectPicker, 16>();
+            objectPickerHandle = parentEntity->componentHandle<ObjectPicker>();
     }
 
     ObjectPicker *objectPicker = m_manager->objectPickerManager()->data(objectPickerHandle);
@@ -299,7 +305,7 @@ bool HierarchicalEntityPicker::collectHits(Entity *root)
 
     QRayCastingService rayCasting;
     std::vector<std::pair<Entity *, bool>> worklist;
-    worklist.push_back({root, !root->componentHandle<ObjectPicker, 16>().isNull()});
+    worklist.push_back({root, !root->componentHandle<ObjectPicker>().isNull()});
 
     while (!worklist.empty()) {
         auto current = worklist.back();
@@ -320,7 +326,7 @@ bool HierarchicalEntityPicker::collectHits(Entity *root)
 
         // and pick children
         for (auto child: current.first->children())
-            worklist.push_back({child, current.second || !child->componentHandle<ObjectPicker, 16>().isNull()});
+            worklist.push_back({child, current.second || !child->componentHandle<ObjectPicker>().isNull()});
     }
 
     return !m_hits.empty();

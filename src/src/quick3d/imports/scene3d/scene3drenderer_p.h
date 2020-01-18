@@ -53,6 +53,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/qsize.h>
+#include <QtCore/QMutex>
 
 QT_BEGIN_NAMESPACE
 
@@ -102,10 +103,13 @@ private:
     QScopedPointer<QSGTexture> m_texture;
     Scene3DSGNode *m_node; // Will be released by the QtQuick SceneGraph
     Scene3DCleaner *m_cleaner;
+    QQuickWindow *m_window;
+    QMutex m_windowMutex;
     QSize m_lastSize;
     bool m_multisample;
     bool m_lastMultisample;
     bool m_needsShutdown;
+    bool m_blocking;
 
     friend class Scene3DCleaner;
 };

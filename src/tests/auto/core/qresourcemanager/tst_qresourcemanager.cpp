@@ -31,12 +31,12 @@
 #include <Qt3DCore/private/qhandle_p.h>
 #include <Qt3DCore/private/qresourcemanager_p.h>
 
-class tst_DynamicArrayPolicy : public QObject
+class tst_QResourceManager : public QObject
 {
     Q_OBJECT
 public:
-    tst_DynamicArrayPolicy() {}
-    ~tst_DynamicArrayPolicy() {}
+    tst_QResourceManager() {}
+    ~tst_QResourceManager() {}
 
 private slots:
     void createResourcesManager();
@@ -48,7 +48,7 @@ private slots:
     void releaseResource();
     void heavyDutyMultiThreadedAccess();
     void heavyDutyMultiThreadedAccessRelease();
-    void maximumNumberOfResources();
+    void collectResources();
     void activeHandles();
 };
 
@@ -68,57 +68,48 @@ Q_DECLARE_RESOURCE_INFO(tst_ArrayResource, Q_REQUIRES_CLEANUP)
 QT_END_NAMESPACE
 
 typedef Qt3DCore::QHandle<tst_ArrayResource> tHandle;
-typedef Qt3DCore::QHandle<tst_ArrayResource, 4> tHandle4;
-typedef Qt3DCore::QHandle<tst_ArrayResource, 8> tHandle8;
-typedef Qt3DCore::QHandle<tst_ArrayResource, 16> tHandle16;
 
-void tst_DynamicArrayPolicy::createResourcesManager()
+void tst_QResourceManager::createResourcesManager()
 {
-    Qt3DCore::QResourceManager<tst_ArrayResource, int, 16> manager16;
-    Qt3DCore::QResourceManager<tst_ArrayResource, int, 4> manager4;
-    Qt3DCore::QResourceManager<tst_ArrayResource, int, 8> manager8;
-    QVERIFY(manager16.maximumSize() == 65535);
-    QVERIFY(manager8.maximumSize() == 255);
-    QVERIFY(manager4.maximumSize() == 15);
+    Qt3DCore::QResourceManager<tst_ArrayResource, int> manager;
 }
 
 /*!
  * Check that the handles returned when a registering resources
  * have a correct index and counter.
  */
-void tst_DynamicArrayPolicy::acquireResources()
+void tst_QResourceManager::acquireResources()
 {
-    Qt3DCore::QResourceManager<tst_ArrayResource, uint, 4> manager;
+    Qt3DCore::QResourceManager<tst_ArrayResource, uint> manager;
 
-    QList<tHandle4> handles;
+    QList<tHandle> handles;
 
     for (int i = 0; i < 5; i++) {
         handles << manager.acquire();
     }
 
     for (uint i = 0; i < 5; i++) {
-        QVERIFY(handles.at(i).index() == i);
-        QVERIFY(handles.at(i).counter() == 1);
+        QVERIFY(!handles.at(i).isNull());
+        if (i > 0)
+            QVERIFY(handles.at(i) != handles.at(i-1));
     }
 }
 
 /*!
  * Test that values can be properly retrieved.
  */
-void tst_DynamicArrayPolicy::getResources()
+void tst_QResourceManager::getResources()
 {
 
-    Qt3DCore::QResourceManager<tst_ArrayResource, int, 8> manager;
+    Qt3DCore::QResourceManager<tst_ArrayResource, int> manager;
     QList<tst_ArrayResource *> resources;
-    QList<tHandle8> handles;
+    QList<tHandle> handles;
 
     for (int i = 0; i < 5; i++) {
         handles << manager.acquire();
     }
 
     for (uint i = 0; i < 5; i++) {
-        QVERIFY(handles.at(i).index() == i);
-        QVERIFY(handles.at(i).counter() == 1);
         resources << manager.data(handles.at(i));
         QVERIFY(resources.at(i) != nullptr);
         resources.at(i)->m_value = i;
@@ -128,7 +119,7 @@ void tst_DynamicArrayPolicy::getResources()
         QVERIFY(manager.data(handles.at(i))->m_value == i);
 
     // Check that an invalid resource returns NULL
-    tHandle8 iHandle;
+    tHandle iHandle;
     QVERIFY(manager.data(iHandle) == nullptr);
 
 }
@@ -137,10 +128,10 @@ void tst_DynamicArrayPolicy::getResources()
  * Test that when a resize of the data vectors in the manager occurs,
  * everything behaves correctly.
  */
-void tst_DynamicArrayPolicy::registerResourcesResize()
+void tst_QResourceManager::registerResourcesResize()
 {
-    Qt3DCore::QResourceManager<tst_ArrayResource, uint, 16> manager;
-    QList<tHandle16> handles;
+    Qt3DCore::QResourceManager<tst_ArrayResource, uint> manager;
+    QList<tHandle> handles;
 
     for (uint i = 0; i < 2; i++) {
         handles << manager.acquire();
@@ -153,8 +144,6 @@ void tst_DynamicArrayPolicy::registerResourcesResize()
     }
 
     for (int i = 0; i < 7; i++) {
-        QVERIFY(handles.at(i).index() == static_cast<uint>(i));
-        QVERIFY(handles.at(i).counter() == 1);
         if (i < 2)
             QVERIFY(manager.data(handles.at(i))->m_value == i + 2);
         else
@@ -165,17 +154,19 @@ void tst_DynamicArrayPolicy::registerResourcesResize()
 /*!
  * Checks for the removal of resources.
  */
-void tst_DynamicArrayPolicy::removeResource()
+void tst_QResourceManager::removeResource()
 {
     Qt3DCore::QResourceManager<tst_ArrayResource, int> manager;
 
-    QList<tst_ArrayResource *> resources;
     QList<tHandle> handles;
 
     for (int i = 0; i < 32; i++) {
         handles << manager.acquire();
-        resources << manager.data(handles.at(i));
     }
+
+
+    tst_ArrayResource *resource = handles.at(2).data();
+    QVERIFY(resource != nullptr);
 
     manager.release(handles.at(2));
     QVERIFY(manager.data(handles.at(2)) == nullptr);
@@ -186,12 +177,12 @@ void tst_DynamicArrayPolicy::removeResource()
     QVERIFY(manager.data(nHandle) != nullptr);
 }
 
-void tst_DynamicArrayPolicy::lookupResource()
+void tst_QResourceManager::lookupResource()
 {
     Qt3DCore::QResourceManager<tst_ArrayResource, uint> manager;
 
     QList<tst_ArrayResource *> resources;
-    QList<tHandle16> handles;
+    QList<tHandle> handles;
 
     for (int i = 0; i < 5; i++) {
         handles << manager.acquire();
@@ -199,7 +190,7 @@ void tst_DynamicArrayPolicy::lookupResource()
         resources.at(i)->m_value = 4;
     }
 
-    tHandle16 t = manager.lookupHandle(2);
+    tHandle t = manager.lookupHandle(2);
     QVERIFY(t.handle() == 0);
     QVERIFY(manager.data(t) == nullptr);
     tst_ArrayResource *resource = manager.getOrCreateResource(2);
@@ -211,7 +202,7 @@ void tst_DynamicArrayPolicy::lookupResource()
     QVERIFY(manager.data(t) == resource);
 }
 
-void tst_DynamicArrayPolicy::releaseResource()
+void tst_QResourceManager::releaseResource()
 {
     Qt3DCore::QResourceManager<tst_ArrayResource, uint> manager;
     QList<tst_ArrayResource *> resources;
@@ -237,7 +228,6 @@ public:
 
     typedef Qt3DCore::QResourceManager<tst_ArrayResource,
     int,
-    16,
     Qt3DCore::ObjectLevelLockingPolicy> Manager;
 
     tst_Thread()
@@ -255,7 +245,7 @@ protected:
     void run()
     {
         int i = 0;
-        int max = tHandle::maxIndex();
+        int max = 65535;
         while (i < max) {
             tst_ArrayResource *r = m_manager->getOrCreateResource(i);
             i++;
@@ -268,14 +258,14 @@ protected:
     Manager *m_manager;
 };
 
-void tst_DynamicArrayPolicy::heavyDutyMultiThreadedAccess()
+void tst_QResourceManager::heavyDutyMultiThreadedAccess()
 {
     tst_Thread::Manager *manager = new tst_Thread::Manager();
 
     QList<tst_Thread *> threads;
 
     int iterations = 8;
-    int max = tHandle16::maxIndex();
+    int max = 65535;
 
     for (int i = 0; i < iterations; i++) {
         tst_Thread *thread = new tst_Thread();
@@ -307,7 +297,6 @@ public:
 
     typedef Qt3DCore::QResourceManager<tst_ArrayResource,
     int,
-    16,
     Qt3DCore::ObjectLevelLockingPolicy> Manager;
 
     tst_Thread2(int releaseAbove = 7)
@@ -326,7 +315,7 @@ protected:
     void run()
     {
         int i = 0;
-        int max = tHandle::maxIndex();
+        int max = 65535;
         while (i < max) {
             tst_ArrayResource *r = m_manager->getOrCreateResource(i);
             QVERIFY(r != nullptr);
@@ -342,14 +331,14 @@ protected:
     int m_releaseAbove;
 };
 
-void tst_DynamicArrayPolicy::heavyDutyMultiThreadedAccessRelease()
+void tst_QResourceManager::heavyDutyMultiThreadedAccessRelease()
 {
     tst_Thread2::Manager *manager = new tst_Thread2::Manager();
 
     QList<tst_Thread2 *> threads;
 
     int iterations = 8;
-    int max = tHandle16::maxIndex();
+    int max = 65535;
 
     for (int u = 0; u < 2; u++) {
 
@@ -378,23 +367,28 @@ void tst_DynamicArrayPolicy::heavyDutyMultiThreadedAccessRelease()
     delete manager;
 }
 
-void tst_DynamicArrayPolicy::maximumNumberOfResources()
+void tst_QResourceManager::collectResources()
 {
     Qt3DCore::QResourceManager<tst_ArrayResource, uint> manager;
 
     QList<tst_ArrayResource *> resources;
-    QList<tHandle16> handles;
+    QList<tHandle> handles;
 
-    QCOMPARE(tHandle16::maxIndex(), (uint)manager.maximumSize());
-
-    for (int i = 0; i < manager.maximumSize(); i++) {
+    for (int i = 0; i < 65536; i++) {
         handles << manager.acquire();
         resources << manager.data(handles.at(i));
         resources.at(i)->m_value = 4;
     }
+    for (auto h : handles) {
+        manager.release(h);
+    }
+    Q_ASSERT(manager.count() == 0);
+    handles.clear();
+    manager.acquire();
+    Q_ASSERT(manager.count() == 1);
 }
 
-void tst_DynamicArrayPolicy::activeHandles()
+void tst_QResourceManager::activeHandles()
 {
     // GIVEN
     Qt3DCore::QResourceManager<tst_ArrayResource, uint> manager;
@@ -431,6 +425,6 @@ void tst_DynamicArrayPolicy::activeHandles()
 
 
 
-QTEST_APPLESS_MAIN(tst_DynamicArrayPolicy)
+QTEST_APPLESS_MAIN(tst_QResourceManager)
 
 #include "tst_qresourcemanager.moc"

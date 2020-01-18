@@ -908,6 +908,11 @@ void QTextureLoaderPrivate::updateGenerator()
 }
 
 /*!
+   \class Qt3DRender::QTextureLoader
+   \inmodule Qt3DRender
+   \brief Handles the texture loading and setting the texture's properties.
+*/
+/*!
  * Constructs a new Qt3DRender::QTextureLoader instance with \a parent as parent.
  *
  * Note that by default, if not contradicted by the file metadata, the loaded texture
@@ -943,8 +948,10 @@ QTextureLoader::~QTextureLoader()
 }
 
 /*!
- * \return the current texture source.
- */
+    \property QTextureLoader::source
+
+    Returns the current texture source.
+*/
 QUrl QTextureLoader::source() const
 {
     Q_D(const QTextureLoader);
