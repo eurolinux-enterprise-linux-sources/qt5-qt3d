@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -37,16 +29,16 @@
 #include <QtTest/QtTest>
 #include <QMatrix4x4>
 #include <Qt3DCore/QEntity>
-#include <Qt3DCore/QCamera>
 #include <Qt3DCore/QTransform>
 #include <Qt3DRender/QMaterial>
-#include <Qt3DRender/QFrameGraph>
-#include <Qt3DRender/QForwardRenderer>
-#include <Qt3DRender/QPhongMaterial>
-#include <Qt3DRender/QCylinderMesh>
+#include <Qt3DExtras/QForwardRenderer>
+#include <Qt3DExtras/QPhongMaterial>
+#include <Qt3DExtras/QCylinderMesh>
+#include <Qt3DRender/QRenderSettings>
 #include <Qt3DRender/private/managers_p.h>
 
 #include <Qt3DCore/private/qresourcemanager_p.h>
+#include <Qt3DRender/qcamera.h>
 #include <Qt3DRender/qrenderaspect.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
 #include <Qt3DRender/private/renderer_p.h>
@@ -58,97 +50,102 @@
 #include <Qt3DCore/private/qaspectmanager_p.h>
 #include <Qt3DCore/private/qaspectthread_p.h>
 #include <Qt3DCore/private/qnodevisitor_p.h>
+#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 #include <QQmlComponent>
 #include <QScopedPointer>
 
-class TestAspect : public Qt3DRender::QRenderAspect
-{
-    Q_OBJECT
-public:
-    TestAspect(bool withWindow = false)
-        : Qt3DRender::QRenderAspect(QRenderAspect::Synchronous)
-        , m_jobManager(new Qt3DCore::QAspectJobManager())
-    {
-        Qt3DCore::QAbstractAspectPrivate::get(this)->m_jobManager = m_jobManager.data();
-        if (!withWindow) {
-            d_func()->m_renderer->createAllocators(m_jobManager.data());
-        } else {
-            m_window.reset(new QWindow());
-            m_window->resize(1024, 768);
+QT_BEGIN_NAMESPACE
 
-            QSurfaceFormat format;
-            if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL) {
-                format.setVersion(4, 3);
-                format.setProfile(QSurfaceFormat::CoreProfile);
+namespace Qt3DRender {
+
+    class QRenderAspectTester : public Qt3DRender::QRenderAspect
+    {
+        Q_OBJECT
+    public:
+        QRenderAspectTester(bool withWindow = false)
+            : Qt3DRender::QRenderAspect(QRenderAspect::Synchronous)
+            , m_jobManager(new Qt3DCore::QAspectJobManager())
+        {
+            Qt3DCore::QAbstractAspectPrivate::get(this)->m_jobManager = m_jobManager.data();
+            if (withWindow) {
+                m_window.reset(new QWindow());
+                m_window->resize(1024, 768);
+
+                QSurfaceFormat format;
+                if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL) {
+                    format.setVersion(4, 3);
+                    format.setProfile(QSurfaceFormat::CoreProfile);
+                }
+                format.setDepthBufferSize( 24 );
+                format.setSamples( 4 );
+                format.setStencilBufferSize(8);
+                m_window->setFormat(format);
+                m_window->create();
+
+                QRenderAspect::onRegistered();
             }
-            format.setDepthBufferSize( 24 );
-            format.setSamples( 4 );
-            format.setStencilBufferSize(8);
-            m_window->setFormat(format);
-            m_window->create();
-
-            QVariantMap data;
-            data.insert(QStringLiteral("surface"), QVariant::fromValue(static_cast<QSurface *>(m_window.data())));
-            data.insert(QStringLiteral("eventSource"), QVariant::fromValue(m_window.data()));
-            QRenderAspect::onInitialize(data);
         }
-    }
 
-    QVector<Qt3DCore::QAspectJobPtr> worldTransformJob()
-    {
-        d_func()->m_worldTransformJob->setRoot(d_func()->m_renderer->sceneRoot());
-        return QVector<Qt3DCore::QAspectJobPtr>() << d_func()->m_worldTransformJob;
-    }
-
-    QVector<Qt3DCore::QAspectJobPtr> updateBoundingJob()
-    {
-        d_func()->m_updateBoundingVolumeJob->setRoot(d_func()->m_renderer->sceneRoot());
-        return QVector<Qt3DCore::QAspectJobPtr>() << d_func()->m_updateBoundingVolumeJob;
-    }
-
-    QVector<Qt3DCore::QAspectJobPtr> calculateBoundingVolumeJob()
-    {
-        d_func()->m_calculateBoundingVolumeJob->setRoot(d_func()->m_renderer->sceneRoot());
-        return QVector<Qt3DCore::QAspectJobPtr>() << d_func()->m_calculateBoundingVolumeJob;
-    }
-
-    QVector<Qt3DCore::QAspectJobPtr> framePreparationJob()
-    {
-        d_func()->m_framePreparationJob->setRoot(d_func()->m_renderer->sceneRoot());
-        return QVector<Qt3DCore::QAspectJobPtr>() << d_func()->m_framePreparationJob;
-    }
-
-    QVector<Qt3DCore::QAspectJobPtr> frameCleanupJob()
-    {
-        d_func()->m_cleanupJob->setRoot(d_func()->m_renderer->sceneRoot());
-        return QVector<Qt3DCore::QAspectJobPtr>() << d_func()->m_cleanupJob;
-    }
-
-    QVector<Qt3DCore::QAspectJobPtr> renderBinJobs()
-    {
-        return d_func()->m_renderer->renderBinJobs();
-    }
-
-    void onRootEntityChanged(Qt3DCore::QEntity *root)
-    {
-        if (!m_window) {
-            Qt3DCore::QNodeVisitor visitor;
-            visitor.traverse(root, this, &TestAspect::visitNode);
-            static_cast<Qt3DRender::Render::Renderer *>(d_func()->m_renderer)->m_renderSceneRoot =
-                    d_func()->m_renderer->nodeManagers()
-                    ->lookupResource<Qt3DRender::Render::Entity, Qt3DRender::Render::EntityManager>(root->id());
+        QVector<Qt3DCore::QAspectJobPtr> worldTransformJob()
+        {
+            static_cast<Render::Renderer *>(d_func()->m_renderer)->m_worldTransformJob->setRoot(d_func()->m_renderer->sceneRoot());
+            return QVector<Qt3DCore::QAspectJobPtr>() << static_cast<Render::Renderer *>(d_func()->m_renderer)->m_worldTransformJob;
         }
-    }
 
-    void visitNode(Qt3DCore::QNode *node)
-    {
-        d_func()->createBackendNode(node);
-    }
+        QVector<Qt3DCore::QAspectJobPtr> updateBoundingJob()
+        {
+            static_cast<Render::Renderer *>(d_func()->m_renderer)->m_updateWorldBoundingVolumeJob->setManager(d_func()->m_renderer->nodeManagers()->renderNodesManager());
+            return QVector<Qt3DCore::QAspectJobPtr>() << static_cast<Render::Renderer *>(d_func()->m_renderer)->m_updateWorldBoundingVolumeJob;
+        }
 
-private:
-    QScopedPointer<Qt3DCore::QAspectJobManager> m_jobManager;
-    QScopedPointer<QWindow> m_window;
-};
+        QVector<Qt3DCore::QAspectJobPtr> calculateBoundingVolumeJob()
+        {
+            static_cast<Render::Renderer *>(d_func()->m_renderer)->m_calculateBoundingVolumeJob->setRoot(d_func()->m_renderer->sceneRoot());
+            return QVector<Qt3DCore::QAspectJobPtr>() << static_cast<Render::Renderer *>(d_func()->m_renderer)->m_calculateBoundingVolumeJob;
+        }
+
+        QVector<Qt3DCore::QAspectJobPtr> framePreparationJob()
+        {
+            static_cast<Render::Renderer *>(d_func()->m_renderer)->m_updateShaderDataTransformJob->setManagers(d_func()->m_renderer->nodeManagers());
+            return QVector<Qt3DCore::QAspectJobPtr>() << static_cast<Render::Renderer *>(d_func()->m_renderer)->m_updateShaderDataTransformJob;
+        }
+
+        QVector<Qt3DCore::QAspectJobPtr> frameCleanupJob()
+        {
+            static_cast<Render::Renderer *>(d_func()->m_renderer)->m_cleanupJob->setRoot(d_func()->m_renderer->sceneRoot());
+            return QVector<Qt3DCore::QAspectJobPtr>() << static_cast<Render::Renderer *>(d_func()->m_renderer)->m_cleanupJob;
+        }
+
+        QVector<Qt3DCore::QAspectJobPtr> renderBinJobs()
+        {
+            return d_func()->m_renderer->renderBinJobs();
+        }
+
+        void onRootEntityChanged(Qt3DCore::QEntity *root)
+        {
+            if (!m_window) {
+                const Qt3DCore::QNodeCreatedChangeGenerator generator(root);
+                const QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = generator.creationChanges();
+
+                for (const Qt3DCore::QNodeCreatedChangeBasePtr change : creationChanges)
+                    d_func()->createBackendNode(change);
+
+                static_cast<Qt3DRender::Render::Renderer *>(d_func()->m_renderer)->m_renderSceneRoot =
+                        d_func()->m_renderer->nodeManagers()
+                        ->lookupResource<Qt3DRender::Render::Entity, Qt3DRender::Render::EntityManager>(root->id());
+            }
+        }
+
+    private:
+        QScopedPointer<Qt3DCore::QAspectJobManager> m_jobManager;
+        QScopedPointer<QWindow> m_window;
+    };
+
+}
+
+QT_END_NAMESPACE
+
+using namespace Qt3DRender;
 
 Qt3DCore::QEntity *loadFromQML(const QUrl &source)
 {
@@ -167,7 +164,7 @@ Qt3DCore::QEntity *buildBigScene()
     Qt3DCore::QEntity *root = new Qt3DCore::QEntity();
 
     // Camera
-    Qt3DCore::QCamera *cameraEntity = new Qt3DCore::QCamera(root);
+    Qt3DRender::QCamera *cameraEntity = new Qt3DRender::QCamera(root);
     cameraEntity->setObjectName(QStringLiteral("cameraEntity"));
     cameraEntity->lens()->setPerspectiveProjection(45.0f, 16.0f/9.0f, 0.1f, 1000.0f);
     cameraEntity->setPosition(QVector3D(0, -250.0f, -50.0f));
@@ -175,13 +172,12 @@ Qt3DCore::QEntity *buildBigScene()
     cameraEntity->setViewCenter(QVector3D(0, 0, 0));
 
     // FrameGraph
-    Qt3DRender::QFrameGraph *frameGraph = new Qt3DRender::QFrameGraph();
-    Qt3DRender::QForwardRenderer *forwardRenderer = new Qt3DRender::QForwardRenderer();
+    Qt3DRender::QRenderSettings* renderSettings = new Qt3DRender::QRenderSettings();
+    Qt3DExtras::QForwardRenderer *forwardRenderer = new Qt3DExtras::QForwardRenderer();
     forwardRenderer->setCamera(cameraEntity);
     forwardRenderer->setClearColor(Qt::black);
-    frameGraph->setActiveFrameGraph(forwardRenderer);
-    root->addComponent(frameGraph);
-
+    renderSettings->setActiveFrameGraph(forwardRenderer);
+    root->addComponent(renderSettings);
 
     const float radius = 100.0f;
     const int max = 1000;
@@ -190,8 +186,8 @@ Qt3DCore::QEntity *buildBigScene()
     for (int i = 0; i < max; i++) {
         Qt3DCore::QEntity *e = new Qt3DCore::QEntity();
         Qt3DCore::QTransform *transform = new Qt3DCore::QTransform();
-        Qt3DRender::QCylinderMesh *mesh = new Qt3DRender::QCylinderMesh();
-        Qt3DRender::QPhongMaterial *material = new Qt3DRender::QPhongMaterial();
+        Qt3DExtras::QCylinderMesh *mesh = new Qt3DExtras::QCylinderMesh();
+        Qt3DExtras::QPhongMaterial *material = new Qt3DExtras::QPhongMaterial();
         mesh->setRings(50.0f);
         mesh->setSlices(30.0f);
         mesh->setRadius(2.5f);
@@ -243,9 +239,10 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Qt3DCore::QEntity*, rootEntity);
-        TestAspect aspect;
+        QRenderAspectTester aspect;
 
-        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->registerAspect(qobject_cast<Qt3DCore::QEntity *>(rootEntity));
+        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->setRootAndCreateNodes(qobject_cast<Qt3DCore::QEntity *>(rootEntity),
+                                                                              QVector<Qt3DCore::QNodeCreatedChangeBasePtr>());
 
         // WHEN
         QVector<Qt3DCore::QAspectJobPtr> jobs = aspect.worldTransformJob();
@@ -266,9 +263,10 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Qt3DCore::QEntity*, rootEntity);
-        TestAspect aspect;
+        QRenderAspectTester aspect;
 
-        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->registerAspect(qobject_cast<Qt3DCore::QEntity *>(rootEntity));
+        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->setRootAndCreateNodes(qobject_cast<Qt3DCore::QEntity *>(rootEntity),
+                                                                              QVector<Qt3DCore::QNodeCreatedChangeBasePtr>());
 
         // WHEN
         QVector<Qt3DCore::QAspectJobPtr> jobs = aspect.updateBoundingJob();
@@ -289,9 +287,10 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Qt3DCore::QEntity*, rootEntity);
-        TestAspect aspect;
+        QRenderAspectTester aspect;
 
-        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->registerAspect(qobject_cast<Qt3DCore::QEntity *>(rootEntity));
+        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->setRootAndCreateNodes(qobject_cast<Qt3DCore::QEntity *>(rootEntity),
+                                                                              QVector<Qt3DCore::QNodeCreatedChangeBasePtr>());
 
         // WHEN
         QVector<Qt3DCore::QAspectJobPtr> jobs = aspect.calculateBoundingVolumeJob();
@@ -312,9 +311,10 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Qt3DCore::QEntity*, rootEntity);
-        TestAspect aspect;
+        QRenderAspectTester aspect;
 
-        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->registerAspect(qobject_cast<Qt3DCore::QEntity *>(rootEntity));
+        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->setRootAndCreateNodes(qobject_cast<Qt3DCore::QEntity *>(rootEntity),
+                                                                              QVector<Qt3DCore::QNodeCreatedChangeBasePtr>());
 
         // WHEN
         QVector<Qt3DCore::QAspectJobPtr> jobs = aspect.framePreparationJob();
@@ -335,9 +335,10 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Qt3DCore::QEntity*, rootEntity);
-        TestAspect aspect;
+        QRenderAspectTester aspect;
 
-        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->registerAspect(qobject_cast<Qt3DCore::QEntity *>(rootEntity));
+        Qt3DCore::QAbstractAspectPrivate::get(&aspect)->setRootAndCreateNodes(qobject_cast<Qt3DCore::QEntity *>(rootEntity),
+                                                                              QVector<Qt3DCore::QNodeCreatedChangeBasePtr>());
 
         // WHEN
         QVector<Qt3DCore::QAspectJobPtr> jobs = aspect.frameCleanupJob();
@@ -360,7 +361,7 @@ private Q_SLOTS:
         // GIVEN
         QFETCH(Qt3DCore::QEntity*, rootEntity);
         QScopedPointer<QThread> aspectThread(new QThread);
-        TestAspect aspect(true);
+        QRenderAspectTester aspect(true);
         aspect.moveToThread(aspectThread.data());
 
         qDebug() << 1;

@@ -1,51 +1,55 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qchangearbiter_p.h"
-#include "qcomponent.h"
-#include "qabstractaspectjobmanager_p.h"
 
-#include "qsceneobserverinterface_p.h"
-#include <Qt3DCore/private/qscene_p.h>
+#include <Qt3DCore/qcomponent.h>
+#include <QtCore/QMutexLocker>
+#include <QtCore/QReadLocker>
+#include <QtCore/QThread>
+#include <QtCore/QWriteLocker>
+
 #include <Qt3DCore/private/corelogging_p.h>
-#include <QMutexLocker>
-#include <QReadLocker>
-#include <QThread>
-#include <QWriteLocker>
-#include <private/qpostman_p.h>
+#include <Qt3DCore/private/qabstractaspectjobmanager_p.h>
+#include <Qt3DCore/private/qpostman_p.h>
+#include <Qt3DCore/private/qscene_p.h>
+#include <Qt3DCore/private/qsceneobserverinterface_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -73,9 +77,9 @@ namespace Qt3DCore {
 QChangeArbiter::QChangeArbiter(QObject *parent)
     : QObject(parent)
     , m_mutex(QMutex::Recursive)
-    , m_jobManager(Q_NULLPTR)
-    , m_postman(Q_NULLPTR)
-    , m_scene(Q_NULLPTR)
+    , m_jobManager(nullptr)
+    , m_postman(nullptr)
+    , m_scene(nullptr)
 {
     // The QMutex has to be recursive to handle the case where :
     // 1) SyncChanges is called, mutex is locked
@@ -88,7 +92,7 @@ QChangeArbiter::QChangeArbiter(QObject *parent)
 
 QChangeArbiter::~QChangeArbiter()
 {
-    if (m_jobManager != Q_NULLPTR)
+    if (m_jobManager != nullptr)
         m_jobManager->waitForPerThreadFunction(QChangeArbiter::destroyThreadLocalChangeQueue, this);
     m_lockingChangeQueues.clear();
     m_changeQueues.clear();
@@ -113,43 +117,29 @@ void QChangeArbiter::distributeQueueChanges(QChangeQueue *changeQueue)
             continue;
 
         if (change->type() == NodeCreated) {
-            Q_FOREACH (QSceneObserverInterface *observer, m_sceneObservers)
+            for (QSceneObserverInterface *observer : qAsConst(m_sceneObservers))
                 observer->sceneNodeAdded(change);
-        }
-        else if (change->type() == NodeAboutToBeDeleted || change->type() == NodeDeleted) {
-            Q_FOREACH (QSceneObserverInterface *observer, m_sceneObservers)
+        } else if (change->type() == NodeDeleted) {
+            for (QSceneObserverInterface *observer : qAsConst(m_sceneObservers))
                 observer->sceneNodeRemoved(change);
         }
 
-        switch (change->observableType()) {
-
-        case QSceneChange::Observable: {
-            const QNodeId nodeId = change->subjectId();
-            if (m_nodeObservations.contains(nodeId)) {
-                QObserverList &observers = m_nodeObservations[nodeId];
-                Q_FOREACH (const QObserverPair&observer, observers) {
-                    if ((change->type() & observer.first))
-                        observer.second->sceneChangeEvent(change);
-                }
-                // Also send change to the postman
-                m_postman->sceneChangeEvent(change);
+        const QNodeId nodeId = change->subjectId();
+        const auto it = m_nodeObservations.constFind(nodeId);
+        if (it != m_nodeObservations.cend()) {
+            const QObserverList &observers = it.value();
+            for (const QObserverPair &observer : observers) {
+                if ((change->type() & observer.first) &&
+                        (change->deliveryFlags() & QSceneChange::BackendNodes))
+                    observer.second->sceneChangeEvent(change);
             }
-            break;
-        }
-
-        case QSceneChange::Node: {
-            const QNodeId nodeId = change->subjectId();
-            if (m_nodeObservations.contains(nodeId)) {
-                QObserverList &observers = m_nodeObservations[nodeId];
-                Q_FOREACH (const QObserverPair&observer, observers) {
-                    if ((change->type() & observer.first))
-                        observer.second->sceneChangeEvent(change);
-                }
+            // Also send change to the postman
+            if (change->deliveryFlags() & QSceneChange::Nodes) {
+                // Check if QNode actually cares about the change
+                if (m_postman->shouldNotifyFrontend(change))
+                    m_postman->sceneChangeEvent(change);
             }
-            break;
         }
-
-        } // observableType switch
     }
     changeQueue->clear();
 }
@@ -186,10 +176,10 @@ void QChangeArbiter::removeLockingChangeQueue(QChangeArbiter::QChangeQueue *queu
 void QChangeArbiter::syncChanges()
 {
     QMutexLocker locker(&m_mutex);
-    Q_FOREACH (QChangeArbiter::QChangeQueue *changeQueue, m_changeQueues)
+    for (QChangeArbiter::QChangeQueue *changeQueue : qAsConst(m_changeQueues))
         distributeQueueChanges(changeQueue);
 
-    Q_FOREACH (QChangeQueue *changeQueue, m_lockingChangeQueues)
+    for (QChangeQueue *changeQueue : qAsConst(m_lockingChangeQueues))
         distributeQueueChanges(changeQueue);
 }
 
@@ -209,7 +199,7 @@ QScene *QChangeArbiter::scene() const
 }
 
 void QChangeArbiter::registerObserver(QObserverInterface *observer,
-                                      const QNodeId &nodeId,
+                                      QNodeId nodeId,
                                       ChangeFlags changeFlags)
 {
     QMutexLocker locker(&m_mutex);
@@ -224,7 +214,7 @@ void QChangeArbiter::registerSceneObserver(QSceneObserverInterface *observer)
         m_sceneObservers << observer;
 }
 
-void QChangeArbiter::unregisterObserver(QObserverInterface *observer, const QNodeId &nodeId)
+void QChangeArbiter::unregisterObserver(QObserverInterface *observer, QNodeId nodeId)
 {
     QMutexLocker locker(&m_mutex);
     if (m_nodeObservations.contains(nodeId)) {
@@ -239,7 +229,7 @@ void QChangeArbiter::unregisterObserver(QObserverInterface *observer, const QNod
 // Called from the QAspectThread context, no need to lock
 void QChangeArbiter::unregisterSceneObserver(QSceneObserverInterface *observer)
 {
-    if (observer != Q_NULLPTR)
+    if (observer != nullptr)
         m_sceneObservers.removeOne(observer);
 }
 
@@ -301,7 +291,7 @@ void QChangeArbiter::destroyUnmanagedThreadLocalChangeQueue(void *changeArbiter)
     if (arbiter->tlsChangeQueue()->hasLocalData()) {
         QChangeQueue *localChangeQueue = arbiter->tlsChangeQueue()->localData();
         arbiter->removeLockingChangeQueue(localChangeQueue);
-        arbiter->tlsChangeQueue()->setLocalData(Q_NULLPTR);
+        arbiter->tlsChangeQueue()->setLocalData(nullptr);
     }
 }
 
@@ -327,7 +317,7 @@ void QChangeArbiter::destroyThreadLocalChangeQueue(void *changeArbiter)
     if (arbiter->tlsChangeQueue()->hasLocalData()) {
         QChangeQueue *localChangeQueue = arbiter->tlsChangeQueue()->localData();
         arbiter->removeChangeQueue(localChangeQueue);
-        arbiter->tlsChangeQueue()->setLocalData(Q_NULLPTR);
+        arbiter->tlsChangeQueue()->setLocalData(nullptr);
     }
 }
 

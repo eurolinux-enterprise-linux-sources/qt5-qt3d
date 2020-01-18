@@ -1,35 +1,38 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2015 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -51,12 +54,27 @@
 
 #include <Qt3DRender/qrenderaspect.h>
 #include <Qt3DRender/qtechnique.h>
-#include <Qt3DRender/private/quniformvalue_p.h>
+#include <Qt3DRender/private/shaderparameterpack_p.h>
 #include <Qt3DRender/private/handle_types_p.h>
 #include <Qt3DRender/private/abstractrenderer_p.h>
 #include <Qt3DCore/qaspectjob.h>
 #include <Qt3DRender/private/qt3drender_global_p.h>
 #include <Qt3DRender/private/pickboundingvolumejob_p.h>
+#include <Qt3DRender/private/rendersettings_p.h>
+#include <Qt3DRender/private/renderviewinitializerjob_p.h>
+#include <Qt3DRender/private/expandboundingvolumejob_p.h>
+#include <Qt3DRender/private/updateworldtransformjob_p.h>
+#include <Qt3DRender/private/calcboundingvolumejob_p.h>
+#include <Qt3DRender/private/updateshaderdatatransformjob_p.h>
+#include <Qt3DRender/private/framecleanupjob_p.h>
+#include <Qt3DRender/private/updateworldboundingvolumejob_p.h>
+#include <Qt3DRender/private/updatetreeenabledjob_p.h>
+#include <Qt3DRender/private/platformsurfacefilter_p.h>
+#include <Qt3DRender/private/sendrendercapturejob_p.h>
+#include <Qt3DRender/private/sendbuffercapturejob_p.h>
+#include <Qt3DRender/private/genericlambdajob_p.h>
+#include <Qt3DRender/private/updatemeshtrianglelistjob_p.h>
+#include <Qt3DRender/private/filtercompatibletechniquejob_p.h>
 
 #include <QHash>
 #include <QMatrix4x4>
@@ -70,12 +88,12 @@
 #include <QAtomicInt>
 #include <QScopedPointer>
 #include <QSemaphore>
-#include <QThreadStorage>
+
+#include <functional>
 
 QT_BEGIN_NAMESPACE
 
 class QSurface;
-class QOpenGLDebugLogger;
 class QMouseEvent;
 
 namespace Qt3DCore {
@@ -92,8 +110,14 @@ class QShaderProgram;
 class QMesh;
 class QRenderPass;
 class QAbstractShapeMesh;
-class QGraphicsApiFilter;
-class QAbstractSceneParser;
+struct GraphicsApiFilterData;
+class QSceneImporter;
+
+#ifdef QT3D_JOBS_RUN_STATS
+namespace Debug {
+class CommandExecuter;
+}
+#endif
 
 namespace Render {
 
@@ -115,81 +139,133 @@ class VSyncFrameAdvanceService;
 class PickEventFilter;
 class NodeManagers;
 
+class UpdateLevelOfDetailJob;
+typedef QSharedPointer<UpdateLevelOfDetailJob> UpdateLevelOfDetailJobPtr;
+
+using SynchronizerJobPtr = GenericLambdaJobPtr<std::function<void()>>;
+
 class QT3DRENDERSHARED_PRIVATE_EXPORT Renderer : public AbstractRenderer
 {
 public:
     explicit Renderer(QRenderAspect::RenderType type);
     ~Renderer();
 
+    void dumpInfo() const Q_DECL_OVERRIDE;
     API api() const Q_DECL_OVERRIDE { return AbstractRenderer::OpenGL; }
 
     qint64 time() const Q_DECL_OVERRIDE;
     void setTime(qint64 time) Q_DECL_OVERRIDE;
 
-    void setSurface(QSurface *s) Q_DECL_OVERRIDE;
-    void setNodeManagers(NodeManagers *managers) Q_DECL_OVERRIDE { m_nodesManager = managers; }
+    void setNodeManagers(NodeManagers *managers) Q_DECL_OVERRIDE;
     void setServices(Qt3DCore::QServiceLocator *services) Q_DECL_OVERRIDE { m_services = services; }
     void setSurfaceExposed(bool exposed) Q_DECL_OVERRIDE;
 
-    QSurface *surface() const Q_DECL_OVERRIDE { return m_surface; }
     NodeManagers *nodeManagers() const Q_DECL_OVERRIDE;
     Qt3DCore::QServiceLocator *services() const Q_DECL_OVERRIDE { return m_services; }
 
     void initialize() Q_DECL_OVERRIDE;
     void shutdown() Q_DECL_OVERRIDE;
-    void createAllocators(Qt3DCore::QAbstractAspectJobManager *jobManager) Q_DECL_OVERRIDE;
-    void destroyAllocators(Qt3DCore::QAbstractAspectJobManager *jobManager) Q_DECL_OVERRIDE;
+    void releaseGraphicsResources() Q_DECL_OVERRIDE;
 
     void render() Q_DECL_OVERRIDE;
     void doRender() Q_DECL_OVERRIDE;
+    void cleanGraphicsResources() Q_DECL_OVERRIDE;
 
     bool isRunning() const Q_DECL_OVERRIDE { return m_running.load(); }
 
     void setSceneRoot(Qt3DCore::QBackendNodeFactory *factory, Entity *sgRoot) Q_DECL_OVERRIDE;
     Entity *sceneRoot() const Q_DECL_OVERRIDE { return m_renderSceneRoot; }
 
-    void setFrameGraphRoot(const Qt3DCore::QNodeId fgRootId) Q_DECL_OVERRIDE;
     FrameGraphNode *frameGraphRoot() const Q_DECL_OVERRIDE;
+
+    void markDirty(BackendNodeDirtySet changes, BackendNode *node) Q_DECL_OVERRIDE;
+    BackendNodeDirtySet dirtyBits() Q_DECL_OVERRIDE;
+    void clearDirtyBits(BackendNodeDirtySet changes) Q_DECL_OVERRIDE;
+
+
+    bool shouldRender() Q_DECL_OVERRIDE;
+    void skipNextFrame() Q_DECL_OVERRIDE;
 
     QVector<Qt3DCore::QAspectJobPtr> renderBinJobs() Q_DECL_OVERRIDE;
     Qt3DCore::QAspectJobPtr pickBoundingVolumeJob() Q_DECL_OVERRIDE;
+    Qt3DCore::QAspectJobPtr syncTextureLoadingJob() Q_DECL_OVERRIDE;
 
-    Qt3DCore::QAspectJobPtr createRenderViewJob(FrameGraphNode *node, int submitOrderIndex);
+    QVector<Qt3DCore::QAspectJobPtr> createRenderBufferJobs() const;
+
+    inline FrameCleanupJobPtr frameCleanupJob() const { return m_cleanupJob; }
+    inline ExpandBoundingVolumeJobPtr expandBoundingVolumeJob() const { return m_expandBoundingVolumeJob; }
+    inline UpdateShaderDataTransformJobPtr updateShaderDataTransformJob() const { return m_updateShaderDataTransformJob; }
+    inline CalculateBoundingVolumeJobPtr calculateBoundingVolumeJob() const { return m_calculateBoundingVolumeJob; }
+    inline UpdateTreeEnabledJobPtr updateTreeEnabledJob() const { return m_updateTreeEnabledJob; }
+    inline UpdateWorldTransformJobPtr updateWorldTransformJob() const { return m_worldTransformJob; }
+    inline UpdateWorldBoundingVolumeJobPtr updateWorldBoundingVolumeJob() const { return m_updateWorldBoundingVolumeJob; }
+    inline UpdateLevelOfDetailJobPtr updateLevelOfDetailJob() const { return m_updateLevelOfDetailJob; }
+    inline UpdateMeshTriangleListJobPtr updateMeshTriangleListJob() const { return m_updateMeshTriangleListJob; }
+    inline FilterCompatibleTechniqueJobPtr filterCompatibleTechniqueJob() const { return m_filterCompatibleTechniqueJob; }
+    inline SynchronizerJobPtr textureLoadSyncJob() const { return m_syncTextureLoadingJob; }
 
     Qt3DCore::QAbstractFrameAdvanceService *frameAdvanceService() const Q_DECL_OVERRIDE;
 
     void registerEventFilter(Qt3DCore::QEventFilterService *service) Q_DECL_OVERRIDE;
 
-    void executeCommands(const QVector<RenderCommand *> &commands);
-    Attribute *updateBuffersAndAttributes(Geometry *geometry, RenderCommand *command, GLsizei &count, bool forceUpdate);
+    virtual void setSettings(RenderSettings *settings) Q_DECL_OVERRIDE;
+    virtual RenderSettings *settings() const Q_DECL_OVERRIDE;
+    QOpenGLContext *shareContext() const Q_DECL_OVERRIDE;
+
+    void updateGLResources();
+    void updateTexture(Texture *texture);
+    void cleanupTexture(const Texture *texture);
+    void downloadGLBuffers();
+
+    void prepareCommandsSubmission(const QVector<RenderView *> &renderViews);
+    bool executeCommandsSubmission(const RenderView *rv);
+    bool updateVAOWithAttributes(Geometry *geometry,
+                                 RenderCommand *command,
+                                 Shader *shader,
+                                 bool forceUpdate);
+
+    bool requiresVAOAttributeUpdate(Geometry *geometry,
+                                    RenderCommand *command) const;
 
     void setOpenGLContext(QOpenGLContext *context);
-    QGraphicsApiFilter *contextInfo() const;
+    const GraphicsApiFilterData *contextInfo() const;
+    GraphicsContext *graphicsContext() const;
 
-    void addAllocator(Qt3DCore::QFrameAllocator *allocator);
-
-    Qt3DCore::QFrameAllocator *currentFrameAllocator();
-    QThreadStorage<Qt3DCore::QFrameAllocator *> *tlsAllocators();
-
-    inline HMaterial defaultMaterialHandle() const { return m_defaultMaterialHandle; }
-    inline HEffect defaultEffectHandle() const { return m_defaultEffectHandle; }
-    inline HTechnique defaultTechniqueHandle() const { return m_defaultTechniqueHandle; }
-    inline HRenderPass defaultRenderPassHandle() const { return m_defaultRenderPassHandle; }
     inline RenderStateSet *defaultRenderState() const { return m_defaultRenderStateSet; }
 
-
     QList<QMouseEvent> pendingPickingEvents() const;
+    QList<QKeyEvent> pendingKeyEvents() const;
 
+    void addRenderCaptureSendRequest(Qt3DCore::QNodeId nodeId);
+    const QVector<Qt3DCore::QNodeId> takePendingRenderCaptureSendRequests();
 
     void enqueueRenderView(RenderView *renderView, int submitOrder);
-    bool submitRenderViews();
+    bool isReadyToSubmit();
 
-    QMutex* mutex() { return &m_mutex; }
+    QVariant executeCommand(const QStringList &args) Q_DECL_OVERRIDE;
+    void setOffscreenSurfaceHelper(OffscreenSurfaceHelper *helper) Q_DECL_OVERRIDE;
+    QSurfaceFormat format() Q_DECL_OVERRIDE;
+
+    struct ViewSubmissionResultData
+    {
+        ViewSubmissionResultData()
+            : lastBoundFBOId(0)
+            , surface(nullptr)
+        {}
+
+        uint lastBoundFBOId;
+        QSurface *surface;
+    };
+
+    ViewSubmissionResultData submitRenderViews(const QVector<Render::RenderView *> &renderViews);
+
+    QMutex* mutex() { return &m_renderQueueMutex; }
 
 
 #ifdef QT3D_RENDER_UNIT_TESTS
 public:
 #else
+
 private:
 #endif
     bool canRender() const;
@@ -202,58 +278,92 @@ private:
 
     Entity *m_renderSceneRoot;
 
-    QHash<QMaterial*, Material*> m_materialHash;
-    QHash<QTechnique *, Technique*> m_techniqueHash;
-    QHash<QShaderProgram*, Shader*> m_shaderHash;
-
-    QMaterial* m_defaultMaterial;
-    QTechnique* m_defaultTechnique;
-
-    HMaterial m_defaultMaterialHandle;
-    HEffect m_defaultEffectHandle;
-    HTechnique m_defaultTechniqueHandle;
-    HRenderPass m_defaultRenderPassHandle;
-
     // Fail safe values that we can use if a RenderCommand
     // is missing a shader
-    Shader *m_defaultRenderShader;
     RenderStateSet *m_defaultRenderStateSet;
-    QHash<QString, QString> m_defaultParameterToGLSLAttributeNames;
-    QUniformPack m_defaultUniformPack;
+    ShaderParameterPack m_defaultUniformPack;
 
     QScopedPointer<GraphicsContext> m_graphicsContext;
-    QSurface *m_surface;
-
+    QSurfaceFormat m_format;
 
     RenderQueue *m_renderQueue;
     QScopedPointer<RenderThread> m_renderThread;
     QScopedPointer<VSyncFrameAdvanceService> m_vsyncFrameAdvanceService;
 
-    void buildDefaultMaterial();
-    void buildDefaultTechnique();
-
-    QMutex m_mutex;
+    QMutex m_renderQueueMutex;
     QSemaphore m_submitRenderViewsSemaphore;
-    QWaitCondition m_waitForWindowToBeSetCondition;
-    QWaitCondition m_waitForInitializationToBeCompleted;
-
-    static void createThreadLocalAllocator(void *renderer);
-    static void destroyThreadLocalAllocator(void *renderer);
-    QThreadStorage<Qt3DCore::QFrameAllocator *> m_tlsAllocators;
+    QSemaphore m_waitForInitializationToBeCompleted;
 
     QAtomicInt m_running;
 
-    QScopedPointer<QOpenGLDebugLogger> m_debugLogger;
     QScopedPointer<PickEventFilter> m_pickEventFilter;
-    QVector<Qt3DCore::QFrameAllocator *> m_allocators;
 
     QVector<Attribute *> m_dirtyAttributes;
     QVector<Geometry *> m_dirtyGeometry;
     QAtomicInt m_exposed;
+    BackendNodeDirtySet m_changeSet;
+    QAtomicInt m_lastFrameCorrect;
     QOpenGLContext *m_glContext;
+    QOpenGLContext *m_shareContext;
     PickBoundingVolumeJobPtr m_pickBoundingVolumeJob;
 
     qint64 m_time;
+
+    RenderSettings *m_settings;
+
+    UpdateShaderDataTransformJobPtr m_updateShaderDataTransformJob;
+    FrameCleanupJobPtr m_cleanupJob;
+    UpdateWorldTransformJobPtr m_worldTransformJob;
+    ExpandBoundingVolumeJobPtr m_expandBoundingVolumeJob;
+    CalculateBoundingVolumeJobPtr m_calculateBoundingVolumeJob;
+    UpdateWorldBoundingVolumeJobPtr m_updateWorldBoundingVolumeJob;
+    UpdateTreeEnabledJobPtr m_updateTreeEnabledJob;
+    SendRenderCaptureJobPtr m_sendRenderCaptureJob;
+    SendBufferCaptureJobPtr m_sendBufferCaptureJob;
+    UpdateLevelOfDetailJobPtr m_updateLevelOfDetailJob;
+    UpdateMeshTriangleListJobPtr m_updateMeshTriangleListJob;
+    FilterCompatibleTechniqueJobPtr m_filterCompatibleTechniqueJob;
+
+    QVector<Qt3DCore::QNodeId> m_pendingRenderCaptureSendRequests;
+
+    void performDraw(RenderCommand *command);
+    void performCompute(const RenderView *rv, RenderCommand *command);
+    void createOrUpdateVAO(RenderCommand *command,
+                           HVao *previousVAOHandle,
+                           OpenGLVertexArrayObject **vao);
+
+    GenericLambdaJobPtr<std::function<void ()>> m_bufferGathererJob;
+    GenericLambdaJobPtr<std::function<void ()>> m_vaoGathererJob;
+    GenericLambdaJobPtr<std::function<void ()>> m_textureGathererJob;
+    GenericLambdaJobPtr<std::function<void ()>> m_shaderGathererJob;
+
+    SynchronizerJobPtr m_syncTextureLoadingJob;
+
+    void lookForAbandonedVaos();
+    void lookForDirtyBuffers();
+    void lookForDownloadableBuffers();
+    void lookForDirtyTextures();
+    void lookForDirtyShaders();
+
+    QMutex m_abandonedVaosMutex;
+    QVector<HVao> m_abandonedVaos;
+
+    QVector<HBuffer> m_dirtyBuffers;
+    QVector<HBuffer> m_downloadableBuffers;
+    QVector<HShader> m_dirtyShaders;
+    QVector<HTexture> m_dirtyTextures;
+
+    bool m_ownedContext;
+
+    OffscreenSurfaceHelper *m_offscreenHelper;
+    QMutex m_offscreenSurfaceMutex;
+
+#ifdef QT3D_JOBS_RUN_STATS
+    QScopedPointer<Qt3DRender::Debug::CommandExecuter> m_commandExecuter;
+    friend class Qt3DRender::Debug::CommandExecuter;
+#endif
+
+    QMetaObject::Connection m_contextConnection;
 };
 
 } // namespace Render

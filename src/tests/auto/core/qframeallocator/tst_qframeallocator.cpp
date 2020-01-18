@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -117,7 +109,7 @@ void tst_QFrameAllocator::initQFrameChunk()
     QVERIFY(c.m_blocksAvailable == c.m_maxBlocksAvailable);
     QCOMPARE(c.m_blocksAvailable, (uchar)12);
     QCOMPARE(c.m_firstAvailableBlock, (uchar)0);
-    QVERIFY(c.m_data != Q_NULLPTR);
+    QVERIFY(c.m_data != nullptr);
     QVERIFY(c.isEmpty());
 
     for (int i = 0; i < 12; i++) {
@@ -136,7 +128,7 @@ void tst_QFrameAllocator::singleAllocationQFrameChunk()
     QVERIFY(c.contains(ptr, 16));
     QVERIFY(!c.isEmpty());
     QCOMPARE(c.m_blocksAvailable, (uchar)(c.m_maxBlocksAvailable - 1));
-    QVERIFY(ptr != Q_NULLPTR);
+    QVERIFY(ptr != nullptr);
     QCOMPARE(c.m_firstAvailableBlock, (uchar)1);
     QCOMPARE(*((uchar*)ptr), (uchar)1);
 }
@@ -147,11 +139,11 @@ void tst_QFrameAllocator::qvectorAllocationQFrameChunk()
 
     c.init(16, 12);
 
-    QVector<int> *v = Q_NULLPTR;
+    QVector<int> *v = nullptr;
 
     QVERIFY(sizeof(v) < 16);
     v = static_cast<QVector<int> *>(c.allocate(16));
-    QVERIFY(v != Q_NULLPTR);
+    QVERIFY(v != nullptr);
     new (v) QVector<int>();
     for (int i = 0; i < 1024; i++)
         v->append(i);
@@ -173,7 +165,7 @@ void tst_QFrameAllocator::multipleAllocationQFrameChunk()
     QCOMPARE(c.m_firstAvailableBlock, (uchar)6);
     QVERIFY(!c.isEmpty());
     for (int i = 0; i < 6; i++) {
-        QVERIFY(ptrs.at(i) != Q_NULLPTR);
+        QVERIFY(ptrs.at(i) != nullptr);
         QCOMPARE(*((uchar*)ptrs.at(i)), (uchar)(i + 1));
     }
 }
@@ -195,11 +187,11 @@ void tst_QFrameAllocator::overflowAllocationQFrameChunk()
     QVERIFY(!c.isEmpty());
     for (int i = 0; i < 15; i++) {
         if (i < 12) {
-            QVERIFY(ptrs.at(i) != Q_NULLPTR);
+            QVERIFY(ptrs.at(i) != nullptr);
             QCOMPARE(*((uchar*)ptrs.at(i)), (uchar)(i + 1));
         }
         else {
-            QVERIFY(ptrs.at(i) == Q_NULLPTR);
+            QVERIFY(ptrs.at(i) == nullptr);
         }
     }
 }
@@ -217,7 +209,7 @@ void tst_QFrameAllocator::singleDeallocationQFrameChunk()
     QVERIFY(c.m_blocksAvailable == c.m_maxBlocksAvailable);
     QCOMPARE(c.m_blocksAvailable, (uchar)12);
     QCOMPARE(c.m_firstAvailableBlock, (uchar)0);
-    QVERIFY(c.m_data != Q_NULLPTR);
+    QVERIFY(c.m_data != nullptr);
     QVERIFY(c.isEmpty());
 
     for (int i = 0; i < 12; i++) {
@@ -245,7 +237,7 @@ void tst_QFrameAllocator::multipleDeallocationQFrameChunk()
 
     QVERIFY(c.m_blocksAvailable == c.m_maxBlocksAvailable);
     QCOMPARE(c.m_blocksAvailable, (uchar)12);
-    QVERIFY(c.m_data != Q_NULLPTR);
+    QVERIFY(c.m_data != nullptr);
     QVERIFY(c.isEmpty());
 
     // Refill all
@@ -253,7 +245,7 @@ void tst_QFrameAllocator::multipleDeallocationQFrameChunk()
     for (int i = 0; i < 12; i++) {
         void *ptr = c.allocate(16);
         ptrs << ptr;
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
     }
     QVERIFY(!c.isEmpty());
 
@@ -269,7 +261,7 @@ void tst_QFrameAllocator::multipleDeallocationQFrameChunk()
     for (int i = 0; i < 12; i++) {
         void *ptr = c.allocate(16);
         ptrs << ptr;
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
     }
 
     // Free all in non linear behavior
@@ -284,7 +276,7 @@ void tst_QFrameAllocator::multipleDeallocationQFrameChunk()
     for (int i = 0; i < 12; i++) {
         void *ptr = c.allocate(16);
         ptrs << ptr;
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
     }
     QVERIFY(!c.isEmpty());
 }
@@ -302,8 +294,8 @@ void tst_QFrameAllocator::containsCheckQFrameChunk()
         ptrs << c.allocate(16);
     }
 
-    QVERIFY(!c.contains((void *)0xffffffff, 16));
-    QVERIFY(!c2.contains((void *)0xffffffff, 16));
+    QVERIFY(!c.contains((void *)(quintptr)0xffffffff, 16));
+    QVERIFY(!c2.contains((void *)(quintptr)0xffffffff, 16));
     QVERIFY(c.contains(ptrs.first(), 16));
     QVERIFY(!c2.contains(ptrs.first(), 16));
     QVERIFY(c.contains(ptrs.last(), 16));
@@ -313,7 +305,7 @@ void tst_QFrameAllocator::containsCheckQFrameChunk()
         ptrs << c2.allocate(16);
     }
 
-    QVERIFY(!c.contains((void *)0xffffffff, 16));
+    QVERIFY(!c.contains((void *)(quintptr)0xffffffff, 16));
     QVERIFY(!c.contains(ptrs.last(), 16));
     QVERIFY(c.contains(ptrs.first(), 16));
     QVERIFY(c2.contains(ptrs.last(), 16));
@@ -361,14 +353,14 @@ void tst_QFrameAllocator::allocateQFixedFrameAllocator()
     // Fill 1 chunck
     for (int i = 0; i < 128; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 1);
     // Fill half of chunk 2
     for (int i = 0; i < 64; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     // Free chunk 2
@@ -382,7 +374,7 @@ void tst_QFrameAllocator::allocateQFixedFrameAllocator()
 
     for (int i = 0; i < 256; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 3);
@@ -398,13 +390,13 @@ void tst_QFrameAllocator::deallocateQFixedFrameAllocator()
 
     for (int i = 0; i < 128; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 1);
     for (int i = 0; i < 64; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 2);
@@ -421,7 +413,7 @@ void tst_QFrameAllocator::deallocateQFixedFrameAllocator()
     QCOMPARE(f.chunkCount(), 1);
     for (int i = 0; i < 36; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 1);
@@ -437,7 +429,7 @@ void tst_QFrameAllocator::checkFragmentationQFixedFrameAllocator()
 
     for (int i = 0; i < 256; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
 
@@ -451,7 +443,7 @@ void tst_QFrameAllocator::checkFragmentationQFixedFrameAllocator()
 
     for (int i = 0; i < 64; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 2);
@@ -467,7 +459,7 @@ void tst_QFrameAllocator::clearQFixedFrameAllocator()
 
     for (int i = 0; i < 256; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 2);
@@ -477,7 +469,7 @@ void tst_QFrameAllocator::clearQFixedFrameAllocator()
 
     for (int i = 0; i < 256; i++) {
         void *ptr = f.allocate();
-        QVERIFY(ptr != Q_NULLPTR);
+        QVERIFY(ptr != nullptr);
         ptrs << ptr;
     }
     QCOMPARE(f.chunkCount(), 2);

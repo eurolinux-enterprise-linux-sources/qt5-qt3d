@@ -1,34 +1,48 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:BSD$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** BSD License Usage
+** Alternatively, you may use this file under the terms of the BSD license
+** as follows:
 **
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** "Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions are
+** met:
+**   * Redistributions of source code must retain the above copyright
+**     notice, this list of conditions and the following disclaimer.
+**   * Redistributions in binary form must reproduce the above copyright
+**     notice, this list of conditions and the following disclaimer in
+**     the documentation and/or other materials provided with the
+**     distribution.
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
+**     from this software without specific prior written permission.
+**
+**
+** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 **
 ** $QT_END_LICENSE$
 **
@@ -37,7 +51,9 @@
 import QtQuick 2.0 as QQ2
 import Qt3D.Core 2.0
 import Qt3D.Render 2.0
+import Qt3D.Input 2.0
 import Qt3D.Logic 2.0
+import Qt3D.Extras 2.0
 
 import "planets.js" as Planets
 
@@ -100,8 +116,8 @@ Entity {
     property real actualScale
 
     // Animate solar system with LogicComponent
-    LogicComponent {
-        onFrameUpdate: {
+    FrameAction {
+        onTriggered: {
             frames++
             animate(focusedPlanet)
         }
@@ -124,41 +140,56 @@ Entity {
         viewCenter: Qt.vector3d( xLookAtOffset, yLookAtOffset, zLookAtOffset )
     }
 
-    Configuration  {
-        controlledCamera: camera
-    }
+    FirstPersonCameraController { camera: camera }
 
     components: [
         PlanetFrameGraph {
             id: framegraph
             viewCamera: camera
             lightCamera: light.lightCamera
-        }
+        },
+        InputSettings {}
     ]
 
-    CloudEffectDS {
-        id: effectDS
-        light: light
-    }
-
-    PlanetEffectD {
+    PlanetEffect {
         id: effectD
         light: light
     }
 
-    PlanetShadowEffectD {
-        id: shadowMapEffectD
-        shadowTexture: framegraph.shadowTexture
-        light: light
-    }
-
-    PlanetEffectDB {
+    PlanetEffect {
         id: effectDB
         light: light
+        vertexES: "qrc:/shaders/es2/planetDB.vert"
+        fragmentES: "qrc:/shaders/es2/planetDB.frag"
+        vertexGL: "qrc:/shaders/gl3/planetDB.vert"
+        fragmentGL: "qrc:/shaders/gl3/planetDB.frag"
     }
 
-    PlanetEffectDSB {
+    PlanetEffect {
         id: effectDSB
+        light: light
+        vertexES: "qrc:/shaders/es2/planetDB.vert"
+        fragmentES: "qrc:/shaders/es2/planetDSB.frag"
+        vertexGL: "qrc:/shaders/gl3/planetDB.vert"
+        fragmentGL: "qrc:/shaders/gl3/planetDSB.frag"
+    }
+
+    PlanetEffect {
+        id: cloudEffect
+        light: light
+        vertexES: "qrc:/shaders/es2/planetD.vert"
+        fragmentES: "qrc:/shaders/es2/planetDS.frag"
+        vertexGL: "qrc:/shaders/gl3/planetD.vert"
+        fragmentGL: "qrc:/shaders/gl3/planetDS.frag"
+    }
+
+    SunEffect {
+        id: sunEffect
+    }
+
+    ShadowEffect {
+        id: shadowMapEffect
+        shadowTexture: framegraph.shadowTexture
         light: light
     }
 
@@ -459,19 +490,20 @@ Entity {
     // STARFIELD
     //
 
-    Mesh {
-        id: starfield
-        source: "qrc:/meshes/starfield.obj"
-    }
-
     Entity {
         id: starfieldEntity
 
-        property Material materialStarfield: PlanetMaterial {
+        Mesh {
+            id: starfield
+            source: "qrc:/meshes/starfield.obj"
+        }
+
+        PlanetMaterial {
+            id: materialStarfield
             effect: effectD
             ambientLight: ambientStrengthStarfield
             specularColor: Qt.rgba(0.0, 0.0, 0.0, 1.0)
-            diffuseMap: "qrc:/images/galaxy_starfield.png"
+            diffuseMap: "qrc:/images/solarsystemscope/galaxy_starfield.jpg"
             shininess: 1000000.0
         }
 
@@ -487,20 +519,19 @@ Entity {
     // SUN
     //
 
-    Planet {
-        id: sun
-        tilt: planetData[Planets.SUN].tilt
-    }
-
     Entity {
         id: sunEntity
 
-        property Material materialSun: PlanetMaterial {
-            effect: effectD
+        Planet {
+            id: sun
+            tilt: planetData[Planets.SUN].tilt
+        }
+
+        PlanetMaterial {
+            id: materialSun
+            effect: sunEffect
             ambientLight: ambientStrengthSun
-            specularColor: Qt.rgba(0.0, 0.0, 0.0, 1.0)
-            diffuseMap: "qrc:/images/sunmap.jpg"
-            shininess: 1000000.0
+            diffuseMap: "qrc:/images/solarsystemscope/sunmap.jpg"
         }
 
         property Transform transformSun: Transform {
@@ -523,20 +554,21 @@ Entity {
 
     // MERCURY
 
-    Planet {
-        id: mercury
-        tilt: planetData[Planets.MERCURY].tilt
-    }
-
     Entity {
         id: mercuryEntity
 
-        property Material materialMercury: PlanetMaterial {
+        Planet {
+            id: mercury
+            tilt: planetData[Planets.MERCURY].tilt
+        }
+
+        PlanetMaterial {
+            id: materialMercury
             effect: effectDB
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/mercurymap.jpg"
-            normalMap: "qrc:/images/mercurynormal.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/mercurymap.jpg"
+            normalMap: "qrc:/images/solarsystemscope/mercurynormal.jpg"
             shininess: shininessSpecularMap
         }
 
@@ -556,20 +588,21 @@ Entity {
 
     // VENUS
 
-    Planet {
-        id: venus
-        tilt: planetData[Planets.VENUS].tilt
-    }
-
     Entity {
         id: venusEntity
 
-        property Material materialVenus: PlanetMaterial {
+        Planet {
+            id: venus
+            tilt: planetData[Planets.VENUS].tilt
+        }
+
+        PlanetMaterial {
+            id: materialVenus
             effect: effectDB
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/venusmap.jpg"
-            normalMap: "qrc:/images/venusnormal.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/venusmap.jpg"
+            normalMap: "qrc:/images/solarsystemscope/venusnormal.jpg"
             shininess: shininessSpecularMap
         }
 
@@ -590,20 +623,21 @@ Entity {
     // EARTH
 
     //! [1]
-    Planet {
-        id: earth
-        tilt: planetData[Planets.EARTH].tilt
-    }
-
     Entity {
         id: earthEntity
 
-        property Material materialEarth: PlanetMaterial {
+        Planet {
+            id: earth
+            tilt: planetData[Planets.EARTH].tilt
+        }
+
+        PlanetMaterial {
+            id: materialEarth
             effect: effectDSB
             ambientLight: ambientStrengthPlanet
-            diffuseMap: "qrc:/images/earthmap1k.jpg"
-            specularMap: "qrc:/images/earthspec1k.jpg"
-            normalMap: "qrc:/images/earthnormal1k.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/earthmap2k.jpg"
+            specularMap: "qrc:/images/solarsystemscope/earthspec2k.jpg"
+            normalMap: "qrc:/images/solarsystemscope/earthnormal2k.jpg"
             shininess: shininessSpecularMap
         }
 
@@ -624,19 +658,20 @@ Entity {
 
     // EARTH CLOUDS
 
-    Planet {
-        id: earthClouds
-        tilt: planetData[Planets.EARTH].tilt
-    }
-
     Entity {
         id: earthCloudsEntity
 
-        property Material materialEarthClouds: PlanetMaterial {
-            effect: effectDS
+        Planet {
+            id: earthClouds
+            tilt: planetData[Planets.EARTH].tilt
+        }
+
+        PlanetMaterial {
+            id: materialEarthClouds
+            effect: cloudEffect
             ambientLight: ambientStrengthClouds
-            diffuseMap: "qrc:/images/earthcloudmapcolortrans.png"
-            specularMap: "qrc:/images/earthcloudmapspec.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/earthcloudmapcolortrans.png"
+            specularMap: "qrc:/images/solarsystemscope/earthcloudmapspec.jpg"
             shininess: shininessClouds
             opacity: 0.2
         }
@@ -657,20 +692,21 @@ Entity {
 
     // MOON
 
-    Planet {
-        id: moon
-        tilt: planetData[Planets.MOON].tilt
-    }
-
     Entity {
         id: moonEntity
 
-        property Material materialMoon: PlanetMaterial {
+        Planet {
+            id: moon
+            tilt: planetData[Planets.MOON].tilt
+        }
+
+        PlanetMaterial {
+            id: materialMoon
             effect: effectDB
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/moonmap1k.jpg"
-            normalMap: "qrc:/images/moonnormal1k.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/moonmap2k.jpg"
+            normalMap: "qrc:/images/solarsystemscope/moonnormal2k.jpg"
             shininess: shininessSpecularMap
         }
 
@@ -690,20 +726,21 @@ Entity {
 
     // MARS
 
-    Planet {
-        id: mars
-        tilt: planetData[Planets.MARS].tilt
-    }
-
     Entity {
         id: marsEntity
 
-        property Material materialMars: PlanetMaterial {
+        Planet {
+            id: mars
+            tilt: planetData[Planets.MARS].tilt
+        }
+
+        PlanetMaterial {
+            id: materialMars
             effect: effectDB
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/marsmap1k.jpg"
-            normalMap: "qrc:/images/marsnormal1k.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/marsmap2k.jpg"
+            normalMap: "qrc:/images/solarsystemscope/marsnormal2k.jpg"
             shininess: shininessSpecularMap
         }
 
@@ -723,19 +760,20 @@ Entity {
 
     // JUPITER
 
-    Planet {
-        id: jupiter
-        tilt: planetData[Planets.JUPITER].tilt
-    }
-
     Entity {
         id: jupiterEntity
 
-        property Material materialJupiter: PlanetMaterial {
+        Planet {
+            id: jupiter
+            tilt: planetData[Planets.JUPITER].tilt
+        }
+
+        PlanetMaterial {
+            id: materialJupiter
             effect: effectD
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/jupitermap.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/jupitermap.jpg"
             shininess: shininessBasic
         }
 
@@ -755,19 +793,20 @@ Entity {
 
     // SATURN
 
-    Planet {
-        id: saturn
-        tilt: planetData[Planets.SATURN].tilt
-    }
-
     Entity {
         id: saturnEntity
 
-        property Material materialSaturn: PlanetMaterial {
-            effect: shadowMapEffectD
+        Planet {
+            id: saturn
+            tilt: planetData[Planets.SATURN].tilt
+        }
+
+        PlanetMaterial {
+            id: materialSaturn
+            effect: shadowMapEffect
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/saturnmap.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/saturnmap.jpg"
             shininess: shininessBasic
         }
 
@@ -787,20 +826,21 @@ Entity {
 
     // SATURN RING
 
-    Ring {
-        id: saturnRing
-        innerRadius: saturnRingInnerRadius
-        outerRadius: saturnRingOuterRadius
-    }
-
     Entity {
         id: saturnRingEntity
 
-        property Material materialSaturnRing: PlanetMaterial {
-            effect: shadowMapEffectD
+        Ring {
+            id: saturnRing
+            innerRadius: saturnRingInnerRadius
+            outerRadius: saturnRingOuterRadius
+        }
+
+        PlanetMaterial {
+            id: materialSaturnRing
+            effect: shadowMapEffect
             ambientLight: ambientStrengthRing
             specularColor: Qt.rgba(0.01, 0.01, 0.01, 1.0)
-            diffuseMap: "qrc:/images/saturnringcolortrans.png"
+            diffuseMap: "qrc:/images/solarsystemscope/saturnringcolortrans.png"
             shininess: shininessBasic
             opacity: 0.4
         }
@@ -821,19 +861,20 @@ Entity {
 
     // URANUS
 
-    Planet {
-        id: uranus
-        tilt: planetData[Planets.URANUS].tilt
-    }
-
     Entity {
         id: uranusEntity
 
-        property Material materialUranus: PlanetMaterial {
-            effect: shadowMapEffectD
+        Planet {
+            id: uranus
+            tilt: planetData[Planets.URANUS].tilt
+        }
+
+        PlanetMaterial {
+            id: materialUranus
+            effect: shadowMapEffect
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/uranusmap.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/uranusmap.jpg"
             shininess: shininessBasic
         }
 
@@ -853,20 +894,21 @@ Entity {
 
     // URANUS RING
 
-    Ring {
-        id: uranusRing
-        innerRadius: uranusRingInnerRadius
-        outerRadius: uranusRingOuterRadius
-    }
-
     Entity {
         id: uranusRingEntity
 
-        property Material materialUranusRing: PlanetMaterial {
-            effect: shadowMapEffectD
+        Ring {
+            id: uranusRing
+            innerRadius: uranusRingInnerRadius
+            outerRadius: uranusRingOuterRadius
+        }
+
+        PlanetMaterial {
+            id: materialUranusRing
+            effect: shadowMapEffect
             ambientLight: ambientStrengthRing
             specularColor: Qt.rgba(0.01, 0.01, 0.01, 1.0)
-            diffuseMap: "qrc:/images/uranusringcolortrans.png"
+            diffuseMap: "qrc:/images/nasa/uranusringcolortrans.png"
             shininess: shininessBasic
             opacity: 0.4
         }
@@ -887,19 +929,20 @@ Entity {
 
     // NEPTUNE
 
-    Planet {
-        id: neptune
-        tilt: planetData[Planets.NEPTUNE].tilt
-    }
-
     Entity {
         id: neptuneEntity
 
-        property Material materialNeptune: PlanetMaterial {
+        Planet {
+            id: neptune
+            tilt: planetData[Planets.NEPTUNE].tilt
+        }
+
+        PlanetMaterial {
+            id: materialNeptune
             effect: effectD
             ambientLight: ambientStrengthPlanet
             specularColor: Qt.rgba(0.2, 0.2, 0.2, 1.0)
-            diffuseMap: "qrc:/images/neptunemap.jpg"
+            diffuseMap: "qrc:/images/solarsystemscope/neptunemap.jpg"
             shininess: shininessBasic
         }
 

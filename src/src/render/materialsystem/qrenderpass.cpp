@@ -1,35 +1,38 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2015 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -38,11 +41,12 @@
 #include "qrenderpass.h"
 #include "qrenderpass_p.h"
 #include "qparameter.h"
-#include "qannotation.h"
-#include "qparametermapping.h"
-#include "qscenepropertychange.h"
+#include "qfilterkey.h"
 #include "qrenderstate.h"
-#include "private/qnode_p.h"
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
+#include <Qt3DCore/private/qnode_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -52,32 +56,158 @@ namespace Qt3DRender {
 
 QRenderPassPrivate::QRenderPassPrivate()
     : QNodePrivate()
-    , m_shader(Q_NULLPTR)
+    , m_shader(nullptr)
 {
 }
+/*!
+    \qmltype RenderPass
+    \instantiates Qt3DRender::QRenderPass
+    \inqmlmodule Qt3D.Render
+    \inherits Node
+    \since 5.7
+    \brief Encapsulates a Render Pass.
 
-void QRenderPass::copy(const QNode *ref)
-{
-    QNode::copy(ref);
-    const QRenderPass *other = static_cast<const QRenderPass*>(ref);
-    d_func()->m_shader = qobject_cast<QShaderProgram *>(QNode::clone(other->d_func()->m_shader));
+    A RenderPass specifies a single rendering pass - an instance of shader program
+    execution - used by Technique. A Render pass consists of a ShaderProgram and
+    a list of FilterKey objects, a list of RenderState objects and a list
+    of \l Parameter objects.
 
-    Q_FOREACH (QAnnotation *crit, other->d_func()->m_annotationList)
-        addAnnotation(qobject_cast<QAnnotation *>(QNode::clone(crit)));
-    Q_FOREACH (QParameterMapping *binding, other->d_func()->m_bindings)
-        addBinding(qobject_cast<QParameterMapping *>(QNode::clone(binding)));
-    Q_FOREACH (QRenderState *renderState, other->d_func()->m_renderStates)
-        addRenderState(qobject_cast<QRenderState *>(QNode::clone(renderState)));
-}
+    RenderPass executes the ShaderProgram using the given RenderState and
+    Parameter nodes when at least one of FilterKey nodes being referenced
+    matches any of the FilterKey nodes in RenderPassFilter or when no FilterKey
+    nodes are specified and no RenderPassFilter is present in the FrameGraph.
 
+    If the RenderPass defines a Parameter, it will be overridden by a Parameter
+    with the same name if it exists in any of the Technique, Effect, Material,
+    TechniqueFilter, RenderPassFilter associated with the pass at runtime. This
+    still can be useful to define sane default values.
+
+    At render time, for each leaf node of the FrameGraph a base render state is
+    recorded by accumulating states defined by all RenderStateSet nodes in the
+    FrameGraph branch. Each RenderPass can overload this base render state by
+    specifying its own RenderState nodes.
+
+    \code
+    RenderPass {
+        id: pass
+        shaderProgram: ShaderProgram {
+            ...
+        }
+        parameters: [
+            Parameters { name: "color"; value: "red" }
+        ]
+        filterKeys: [
+            FilterKey { name: "name"; value: "zFillPass" }
+        ]
+        renderStates: [
+            DepthTest { }
+        ]
+    }
+    \endcode
+
+    \sa RenderPassFilter, FilterKey, Parameter, RenderState, Effect, Technique
+ */
+
+/*!
+    \class Qt3DRender::QRenderPass
+    \inmodule Qt3DRender
+    \since 5.7
+    \brief Encapsulates a Render Pass.
+
+    A Qt3DRender::QRenderPass specifies a single rendering pass - an instance of shader
+    program execution - used by Qt3DRender::QTechnique. Render pass consists
+    of a Qt3DRender::QShaderProgram and a list of Qt3DRender::QFilterKey objects,
+    a list of Qt3DRender::QRenderState objects and a list of Qt3DRender::QParameter objects.
+
+    QRenderPass executes the QShaderProgram using the given QRenderState and
+    QParameter nodes when at least one of QFilterKey nodes being referenced
+    matches any of the QFilterKey nodes in QRenderPassFilter or when no
+    QFilterKey nodes are specified and no QRenderPassFilter is present in the
+    FrameGraph.
+
+    If the QRenderPass defines a QParameter, it will be overridden by a
+    QParameter with the same name if it exists in any of the QTechnique,
+    QEffect, QMaterial, QTechniqueFilter, QRenderPassFilter associated with the
+    pass at runtime. This still can be useful to define sane default values.
+
+    At render time, for each leaf node of the FrameGraph a base render state is
+    recorded by accumulating states defined by all QRenderStateSet nodes in the
+    FrameGraph branch. Each QRenderPass can overload this base render state by
+    specifying its own QRenderState nodes.
+
+    \code
+    // Create the render passes
+    QRenderPass *pass = new QRenderPass();
+
+    // Create shader program
+    QShaderProgram *glShader = new QShaderProgram();
+
+    // Set the shader on the render pass
+    pass->setShaderProgram(glShader);
+
+    // Create a FilterKey
+    QFilterKey *filterKey = new QFilterKey();
+    filterKey->setName(QStringLiteral("name"));
+    fitlerKey->setValue(QStringLiteral("zFillPass"));
+
+    // Add the FilterKey to the pass
+    pass->addFilterKey(filterKey);
+
+    // Create a QParameter
+    QParameter *colorParameter = new QParameter(QStringLiteral("color"), QColor::fromRgbF(0.0f, 0.0f, 1.0f, 1.0f));
+
+    // Add parameter to pass
+    pass->addParameter(colorParameter);
+
+    // Create a QRenderState
+    QDepthTest *depthTest = new QDepthTest();
+
+    // Add the render state to the pass
+    pass->addRenderState(depthTest);
+    \endcode
+
+    \sa QRenderPassFilter, QFilterKey, QParameter, QRenderState, QEffect, QTechnique
+ */
+/*!
+    \typedef ParameterList
+    \relates Qt3DRender::QRenderPass
+
+    A list of Qt3DRender::QParameter parameters.
+*/
+/*!
+    \qmlproperty ShaderProgram Qt3D.Render::RenderPass::shaderProgram
+    Holds the shader program to be used for this render pass.
+*/
+/*!
+    \qmlproperty list<FilterKey> Qt3D.Render::RenderPass::filterKeys
+    Holds the filter keys enabling the use of this render pass.
+*/
+/*!
+    \qmlproperty list<RenderState> Qt3D.Render::RenderPass::renderStates
+    Holds the render states used by the render pass.
+*/
+/*!
+    \qmlproperty list<Parameter> Qt3D.Render::RenderPass::parameters
+    Holds the shader parameter values used by the render pass.
+*/
+
+/*!
+    \property Qt3DRender::QRenderPass::shaderProgram
+    Specifies the shader program to be used for this render pass.
+ */
+
+/*!
+  \fn Qt3DRender::QRenderPass::QRenderPass(Qt3DCore::QNode *parent)
+  Constructs a new QRenderPass with the specified \a parent.
+ */
 QRenderPass::QRenderPass(QNode *parent)
     : QNode(*new QRenderPassPrivate, parent)
 {
 }
 
+/*! \internal */
 QRenderPass::~QRenderPass()
 {
-    QNode::cleanup();
 }
 
 /*! \internal */
@@ -86,51 +216,34 @@ QRenderPass::QRenderPass(QRenderPassPrivate &dd, QNode *parent)
 {
 }
 
-ParameterList QRenderPass::attributes() const
-{
-    Q_D(const QRenderPass);
-    return d->m_attributes;
-}
-
-ParameterList QRenderPass::uniforms() const
-{
-    Q_D(const QRenderPass);
-    return d->m_uniforms;
-}
-
-/*!
- * Sets the pass's \a shaderProgram. This posts a ComponentUpdated
- * QScenePropertyChange to the QChangeArbiter. The value is set to
- * the \a shaderProgram and the property name to \c {"shaderProgram"}.
- */
 void QRenderPass::setShaderProgram(QShaderProgram *shaderProgram)
 {
     Q_D(QRenderPass);
     if (d->m_shader != shaderProgram) {
 
-        if (d->m_shader != Q_NULLPTR && d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr e(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
-            e->setPropertyName("shaderProgram");
-            e->setValue(QVariant::fromValue(d->m_shader->id()));
-            d->notifyObservers(e);
+        if (d->m_shader != nullptr && d->m_changeArbiter != nullptr) {
+            const auto change = QPropertyNodeRemovedChangePtr::create(id(), d->m_shader);
+            change->setPropertyName("shaderProgram");
+            d->notifyObservers(change);
         }
 
-        d->m_shader = shaderProgram;
-        emit shaderProgramChanged(shaderProgram);
+        if (d->m_shader)
+            d->unregisterDestructionHelper(d->m_shader);
 
         // We need to add it as a child of the current node if it has been declared inline
         // Or not previously added as a child of the current node so that
         // 1) The backend gets notified about it's creation
         // 2) When the current node is destroyed, it gets destroyed as well
-        if (!shaderProgram->parent())
+        if (shaderProgram && !shaderProgram->parent())
             shaderProgram->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr e(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
-            e->setPropertyName("shaderProgram");
-            e->setValue(QVariant::fromValue(shaderProgram->id()));
-            d->notifyObservers(e);
-        }
+        d->m_shader = shaderProgram;
+
+        // Ensures proper bookkeeping
+        if (d->m_shader)
+            d->registerDestructionHelper(d->m_shader, &QRenderPass::setShaderProgram, d->m_shader);
+
+        emit shaderProgramChanged(shaderProgram);
     }
 }
 
@@ -140,139 +253,129 @@ QShaderProgram *QRenderPass::shaderProgram() const
     return d->m_shader;
 }
 
-void QRenderPass::addAnnotation(QAnnotation *annotation)
+/*!
+    Adds \a filterKey to the Qt3DRender::QRenderPass local filter keys.
+ */
+void QRenderPass::addFilterKey(QFilterKey *filterKey)
 {
+    Q_ASSERT(filterKey);
     Q_D(QRenderPass);
-    if (!d->m_annotationList.contains(annotation)) {
-        d->m_annotationList.append(annotation);
+    if (!d->m_filterKeyList.contains(filterKey)) {
+        d->m_filterKeyList.append(filterKey);
+
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(filterKey, &QRenderPass::removeFilterKey, d->m_filterKeyList);
 
         // We need to add it as a child of the current node if it has been declared inline
         // Or not previously added as a child of the current node so that
         // 1) The backend gets notified about it's creation
         // 2) When the current node is destroyed, it gets destroyed as well
-        if (!annotation->parent())
-            annotation->setParent(this);
+        if (!filterKey->parent())
+            filterKey->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr change(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
-            change->setPropertyName("annotation");
-            change->setValue(QVariant::fromValue(annotation->id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = QPropertyNodeAddedChangePtr::create(id(), filterKey);
+            change->setPropertyName("filterKeys");
             d->notifyObservers(change);
         }
     }
-}
-
-void QRenderPass::removeAnnotation(QAnnotation *annotation)
-{
-    Q_D(QRenderPass);
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
-        change->setPropertyName("annotation");
-        change->setValue(QVariant::fromValue(annotation->id()));
-        d->notifyObservers(change);
-    }
-    d->m_annotationList.removeOne(annotation);
-}
-
-QList<QAnnotation *> QRenderPass::annotations() const
-{
-    Q_D(const QRenderPass);
-    return d->m_annotationList;
-}
-
-void QRenderPass::addBinding(QParameterMapping *binding)
-{
-    Q_D(QRenderPass);
-    if (!d->m_bindings.contains(binding)) {
-        d->m_bindings.append(binding);
-
-        if (!binding->parent())
-            binding->setParent(this);
-
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr change(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
-            change->setPropertyName("binding");
-            change->setValue(QVariant::fromValue(QNode::clone(binding)));
-            d->notifyObservers(change);
-        }
-    }
-}
-
-void QRenderPass::removeBinding(QParameterMapping *binding)
-{
-    Q_D(QRenderPass);
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
-        change->setPropertyName("binding");
-        change->setValue(QVariant::fromValue(binding->id()));
-        d->notifyObservers(change);
-    }
-    d->m_bindings.removeOne(binding);
-}
-
-QList<QParameterMapping *> QRenderPass::bindings() const
-{
-    Q_D(const QRenderPass);
-    return d->m_bindings;
 }
 
 /*!
- * Adds a Qt3DCore::QRenderState \a state to the rendering pass. That implies that
- * when the pass is executed at render time, the globally set render state will
- * be modifed by the states defined locally by the Qt3DRender::QRenderPass.
- *
- * \note not defining any Qt3DCore::QRenderState in a pass will result in the pass using
- * the globally set render state for a given FrameGraph branch execution path.
+    Removes \a filterKey from the Qt3DRender::QRenderPass local filter keys.
+ */
+void QRenderPass::removeFilterKey(QFilterKey *filterKey)
+{
+    Q_ASSERT(filterKey);
+    Q_D(QRenderPass);
+    if (d->m_changeArbiter != nullptr) {
+        const auto change = QPropertyNodeRemovedChangePtr::create(id(), filterKey);
+        change->setPropertyName("filterKeys");
+        d->notifyObservers(change);
+    }
+    d->m_filterKeyList.removeOne(filterKey);
+    // Remove bookkeeping connection
+    d->unregisterDestructionHelper(filterKey);
+}
+
+/*!
+    Returns the list of Qt3DRender::QFilterKey key objects making up the filter keys
+    of the Qt3DRender::QRenderPass.
+ */
+QVector<QFilterKey *> QRenderPass::filterKeys() const
+{
+    Q_D(const QRenderPass);
+    return d->m_filterKeyList;
+}
+
+/*!
+    Adds a render \a state to the rendering pass. That implies that
+    when the pass is executed at render time, the globally set render state will
+    be modified by the states defined locally by the Qt3DRender::QRenderPass.
+
+    \note not defining any Qt3DRender::QRenderState in a pass will result in the pass using
+    the globally set render state for a given FrameGraph branch execution path.
  */
 void QRenderPass::addRenderState(QRenderState *state)
 {
+    Q_ASSERT(state);
     Q_D(QRenderPass);
-
     if (!d->m_renderStates.contains(state)) {
         d->m_renderStates.append(state);
+
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(state, &QRenderPass::removeRenderState, d->m_renderStates);
 
         if (!state->parent())
             state->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr change(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = QPropertyNodeAddedChangePtr::create(id(), state);
             change->setPropertyName("renderState");
-            change->setValue(QVariant::fromValue(QNodePtr(QNode::clone(state))));
             d->notifyObservers(change);
         }
     }
 }
 
 /*!
- * Removes \a state from the Qt3DRender::QRenderPass local render state.
+    Removes \a state from the Qt3DRender::QRenderPass local render state.
  */
 void QRenderPass::removeRenderState(QRenderState *state)
 {
+    Q_ASSERT(state);
     Q_D(QRenderPass);
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
+    if (d->m_changeArbiter != nullptr) {
+        const auto change = QPropertyNodeRemovedChangePtr::create(id(), state);
         change->setPropertyName("renderState");
-        change->setValue(QVariant::fromValue(state->id()));
         d->notifyObservers(change);
     }
     d->m_renderStates.removeOne(state);
+    // Remove bookkeeping connection
+    d->unregisterDestructionHelper(state);
 }
 
 /*!
- * Returns the list of Qt3DCore::QRenderState state objects making up the render
- * state of the Qt3DRender::QRenderPass.
+    Returns the list of Qt3DRender::QRenderState state objects making up the render
+    state of the Qt3DRender::QRenderPass.
  */
-QList<QRenderState *> QRenderPass::renderStates() const
+QVector<QRenderState *> QRenderPass::renderStates() const
 {
     Q_D(const QRenderPass);
     return d->m_renderStates;
 }
 
+/*!
+    Add \a parameter to the render pass' parameters.
+ */
 void QRenderPass::addParameter(QParameter *parameter)
 {
+    Q_ASSERT(parameter);
     Q_D(QRenderPass);
     if (!d->m_parameters.contains(parameter)) {
         d->m_parameters.append(parameter);
+
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(parameter, &QRenderPass::removeParameter, d->m_parameters);
 
         // We need to add it as a child of the current node if it has been declared inline
         // Or not previously added as a child of the current node so that
@@ -281,33 +384,50 @@ void QRenderPass::addParameter(QParameter *parameter)
         if (!parameter->parent())
             parameter->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr change(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = QPropertyNodeAddedChangePtr::create(id(), parameter);
             change->setPropertyName("parameter");
-            change->setValue(QVariant::fromValue(parameter->id()));
             d->notifyObservers(change);
         }
     }
 }
 
+/*!
+    Remove \a parameter from the render pass' parameters.
+ */
 void QRenderPass::removeParameter(QParameter *parameter)
 {
+    Q_ASSERT(parameter);
     Q_D(QRenderPass);
-
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
+    if (d->m_changeArbiter != nullptr) {
+        const auto change = QPropertyNodeRemovedChangePtr::create(id(), parameter);
         change->setPropertyName("parameter");
-        change->setValue(QVariant::fromValue(parameter->id()));
         d->notifyObservers(change);
     }
     d->m_parameters.removeOne(parameter);
+    // Remove bookkeeping connection
+    d->unregisterDestructionHelper(parameter);
 }
 
-
-QList<QParameter *> QRenderPass::parameters() const
+/*!
+    Returns a vector of the render pass' current parameters
+ */
+ParameterList QRenderPass::parameters() const
 {
     Q_D(const QRenderPass);
     return d->m_parameters;
+}
+
+Qt3DCore::QNodeCreatedChangeBasePtr QRenderPass::createNodeCreationChange() const
+{
+    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QRenderPassData>::create(this);
+    auto &data = creationChange->data;
+    Q_D(const QRenderPass);
+    data.filterKeyIds = qIdsForNodes(d->m_filterKeyList);
+    data.parameterIds = qIdsForNodes(d->m_parameters);
+    data.renderStateIds = qIdsForNodes(d->m_renderStates);
+    data.shaderId = qIdForNode(d->m_shader);
+    return creationChange;
 }
 
 } // namespace Qt3DRender

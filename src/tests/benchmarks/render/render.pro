@@ -1,3 +1,7 @@
 TEMPLATE=subdirs
 
-SUBDIRS += jobs
+qtConfig(private_tests) {
+    SUBDIRS += jobs \
+               layerfiltering \
+               materialparametergathering
+}

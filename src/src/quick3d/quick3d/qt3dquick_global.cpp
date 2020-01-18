@@ -1,46 +1,50 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qt3dquick_global_p.h"
-#include "qt3dquicknodefactory_p.h"
-#include <private/qqmlglobal_p.h>
-#include <private/qt3dquickvaluetypes_p.h>
-#include <private/qv8engine_p.h>
-#include <private/qv4engine_p.h>
-#include <private/qv4object_p.h>
+
+#include <Qt3DQuick/private/qt3dquicknodefactory_p.h>
+#include <Qt3DQuick/private/qt3dquickvaluetypes_p.h>
+#include <QtQml/private/qqmlglobal_p.h>
+#include <QtQml/private/qv4engine_p.h>
+#include <QtQml/private/qv4object_p.h>
+#include <QtQml/private/qv8engine_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -156,8 +160,8 @@ public:
             int index = s.indexOf(QLatin1Char(','));
 
             bool xGood, yGood;
-            float xCoord = s.left(index).toFloat(&xGood);
-            float yCoord = s.mid(index+1).toFloat(&yGood);
+            float xCoord = s.leftRef(index).toFloat(&xGood);
+            float yCoord = s.midRef(index+1).toFloat(&yGood);
 
             if (xGood && yGood) {
                 if (ok) *ok = true;
@@ -176,9 +180,9 @@ public:
             int index2 = s.indexOf(QLatin1Char(','), index+1);
 
             bool xGood, yGood, zGood;
-            float xCoord = s.left(index).toFloat(&xGood);
-            float yCoord = s.mid(index+1, index2-index-1).toFloat(&yGood);
-            float zCoord = s.mid(index2+1).toFloat(&zGood);
+            float xCoord = s.leftRef(index).toFloat(&xGood);
+            float yCoord = s.midRef(index+1, index2-index-1).toFloat(&yGood);
+            float zCoord = s.midRef(index2+1).toFloat(&zGood);
 
             if (xGood && yGood && zGood) {
                 if (ok) *ok = true;
@@ -198,10 +202,10 @@ public:
             int index3 = s.indexOf(QLatin1Char(','), index2+1);
 
             bool xGood, yGood, zGood, wGood;
-            float xCoord = s.left(index).toFloat(&xGood);
-            float yCoord = s.mid(index+1, index2-index-1).toFloat(&yGood);
-            float zCoord = s.mid(index2+1, index3-index2-1).toFloat(&zGood);
-            float wCoord = s.mid(index3+1).toFloat(&wGood);
+            float xCoord = s.leftRef(index).toFloat(&xGood);
+            float yCoord = s.midRef(index+1, index2-index-1).toFloat(&yGood);
+            float zCoord = s.midRef(index2+1, index3-index2-1).toFloat(&zGood);
+            float wCoord = s.midRef(index3+1).toFloat(&wGood);
 
             if (xGood && yGood && zGood && wGood) {
                 if (ok) *ok = true;
@@ -221,10 +225,10 @@ public:
             int index3 = s.indexOf(QLatin1Char(','), index2+1);
 
             bool sGood, xGood, yGood, zGood;
-            qreal sCoord = s.left(index).toDouble(&sGood);
-            qreal xCoord = s.mid(index+1, index2-index-1).toDouble(&xGood);
-            qreal yCoord = s.mid(index2+1, index3-index2-1).toDouble(&yGood);
-            qreal zCoord = s.mid(index3+1).toDouble(&zGood);
+            qreal sCoord = s.leftRef(index).toDouble(&sGood);
+            qreal xCoord = s.midRef(index+1, index2-index-1).toDouble(&xGood);
+            qreal yCoord = s.midRef(index2+1, index3-index2-1).toDouble(&yGood);
+            qreal zCoord = s.midRef(index3+1).toDouble(&zGood);
 
             if (sGood && xGood && yGood && zGood) {
                 if (ok) *ok = true;
@@ -241,7 +245,7 @@ public:
         if (s.count(QLatin1Char(',')) == 15) {
             float matValues[16];
             bool vOK = true;
-            QString mutableStr = s;
+            QStringRef mutableStr(&s);
             for (int i = 0; vOK && i < 16; ++i) {
                 int cidx = mutableStr.indexOf(QLatin1Char(','));
                 matValues[i] = mutableStr.left(cidx).toDouble(&vOK);
@@ -301,7 +305,7 @@ public:
             break;
         }
 
-        return Q_NULLPTR;
+        return nullptr;
     }
 
     bool init(int type, QVariant& dst) Q_DECL_OVERRIDE
@@ -576,6 +580,7 @@ public:
         case QMetaType::QColor:
             {
             Q_ASSERT(dstSize >= sizeof(QColor));
+            Q_UNUSED(dstSize);
             const QRgb *rgb = reinterpret_cast<const QRgb *>(src);
             QColor *color = reinterpret_cast<QColor *>(dst);
             new (color) QColor(QColor::fromRgba(*rgb));
@@ -654,10 +659,12 @@ public:
 #undef ASSERT_VALID_SIZE
 };
 
+Quick3DValueTypeProvider *valueTypeProvider = nullptr;
 static Quick3DValueTypeProvider *getValueTypeProvider()
 {
-    static Quick3DValueTypeProvider valueTypeProvider;
-    return &valueTypeProvider;
+    if (valueTypeProvider == nullptr)
+        valueTypeProvider = new Quick3DValueTypeProvider();
+    return valueTypeProvider;
 }
 
 static Quick3DColorProvider *getColorProvider()
@@ -666,12 +673,45 @@ static Quick3DColorProvider *getColorProvider()
     return &colorProvider;
 }
 
+static QQmlPrivate::AutoParentResult qquick3ditem_autoParent(QObject *obj, QObject *parent)
+{
+    // When setting a parent (especially during dynamic object creation) in QML,
+    // also try to set up the analogous item/window relationship.
+    auto parentNode = qmlobject_cast<Qt3DCore::QNode *>(parent);
+    if (parentNode) {
+        auto node = qmlobject_cast<Qt3DCore::QNode *>(obj);
+        if (node) {
+            // A QNode has another QNode child
+            node->setParent(parentNode);
+            return QQmlPrivate::Parented;
+        }
+    } else {
+        return QQmlPrivate::IncompatibleParent;
+    }
+    return QQmlPrivate::IncompatibleObject;
+}
+
 void Quick3D_initialize()
 {
     Qt3DCore::Quick::Quick3DValueTypes::registerValueTypes();
     QQml_addValueTypeProvider(getValueTypeProvider());
     QQml_setColorProvider(getColorProvider());
     QAbstractNodeFactory::registerNodeFactory(QuickNodeFactory::instance());
+
+    // Register a hook called when we do component.create() that sets the
+    // parent. We need this as QObject::setParent() is insufficient to propagate
+    // the arbiter and scene to the children (see QNode::setParent(QNode *).
+    // TODO: Replace this with virtual void QObjectPrivate::setParent(QObject *)
+    // that can be called from QObject ctor and QObject::setParent(). That would
+    // allow removal of this hook here and in QtQuick.
+    QQmlPrivate::RegisterAutoParent autoparent = { 0, &qquick3ditem_autoParent };
+    QQmlPrivate::qmlregister(QQmlPrivate::AutoParentRegistration, &autoparent);
+}
+
+void Quick3D_uninitialize()
+{
+    delete valueTypeProvider;
+    valueTypeProvider = nullptr;
 }
 
 void Quick3D_registerType(const char *className, const char *quickName, int major, int minor)

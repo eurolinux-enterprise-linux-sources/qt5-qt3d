@@ -1,34 +1,26 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -175,7 +167,7 @@ AssimpIOSystem::AssimpIOSystem()
 
 bool AssimpIOSystem::Exists(const char *pFile) const
 {
-    return QFileInfo(QString::fromUtf8(pFile)).exists();
+    return QFileInfo::exists(QString::fromUtf8(pFile));
 }
 
 char AssimpIOSystem::getOsSeparator() const
@@ -194,7 +186,7 @@ Assimp::IOStream *AssimpIOSystem::Open(const char *pFile, const char *pMode)
     if (file->open(openMode))
         return new AssimpIOStream(file.take());
 
-    return Q_NULLPTR;
+    return nullptr;
 }
 
 void AssimpIOSystem::Close(Assimp::IOStream *pFile)
@@ -360,9 +352,20 @@ protected:
     Node *m_rootNode;
     QVector<AnimationInfo> m_animations;
 };
+QT_BEGIN_NAMESPACE
+Q_DECLARE_TYPEINFO(Importer::BufferInfo,           Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::MeshInfo::BufferView, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::MeshInfo::Accessor,   Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::MaterialInfo,         Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::CameraInfo,           Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::EmbeddedTextureInfo,  Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::Node,                 Q_COMPLEX_TYPE); // uses address as identity
+Q_DECLARE_TYPEINFO(Importer::KeyFrame,             Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Importer::AnimationInfo,        Q_MOVABLE_TYPE);
+QT_END_NAMESPACE
 
 Importer::Importer()
-    : m_rootNode(Q_NULLPTR)
+    : m_rootNode(nullptr)
 {
 }
 
@@ -370,7 +373,7 @@ void Importer::delNode(Importer::Node *n)
 {
     if (!n)
         return;
-    foreach (Importer::Node *c, n->children)
+    for (Importer::Node *c : qAsConst(n->children))
         delNode(c);
     delete n;
 }
@@ -395,10 +398,10 @@ const Importer::Node *Importer::rootNode() const
 
 bool Importer::allMeshesForMaterialHaveTangents(uint materialIndex) const
 {
-    foreach (const MeshInfo &mi, m_meshInfo) {
+    for (const MeshInfo &mi : m_meshInfo) {
         if (mi.materialIndex == materialIndex) {
             bool hasTangents = false;
-            foreach (const MeshInfo::Accessor &acc, mi.accessors) {
+            for (const MeshInfo::Accessor &acc : mi.accessors) {
                 if (acc.usage == QStringLiteral("TANGENT")) {
                     hasTangents = true;
                     break;
@@ -414,8 +417,8 @@ bool Importer::allMeshesForMaterialHaveTangents(uint materialIndex) const
 QVector<Importer::MeshInfo::BufferView> Importer::bufferViews() const
 {
     QVector<Importer::MeshInfo::BufferView> bv;
-    foreach (const MeshInfo &mi, m_meshInfo) {
-        foreach (const MeshInfo::BufferView &v, mi.views)
+    for (const MeshInfo &mi : m_meshInfo) {
+        for (const MeshInfo::BufferView &v : mi.views)
             bv << v;
     }
     return bv;
@@ -424,8 +427,8 @@ QVector<Importer::MeshInfo::BufferView> Importer::bufferViews() const
 QVector<Importer::MeshInfo::Accessor> Importer::accessors() const
 {
     QVector<Importer::MeshInfo::Accessor> acc;
-    foreach (const MeshInfo &mi, m_meshInfo) {
-        foreach (const MeshInfo::Accessor &a, mi.accessors)
+    for (const MeshInfo &mi : m_meshInfo) {
+        for (const MeshInfo::Accessor &a : mi.accessors)
             acc << a;
     }
     return acc;
@@ -473,14 +476,14 @@ QVector<Importer::AnimationInfo> Importer::animations() const
 
 const Importer::Node *Importer::findNode(const Node *root, const QString &originalName) const
 {
-    foreach (const Node *c, root->children) {
+    for (const Node *c : root->children) {
         if (c->name == originalName)
             return c;
         const Node *cn = findNode(c, originalName);
         if (cn)
             return cn;
     }
-    return Q_NULLPTR;
+    return nullptr;
 }
 
 class AssimpImporter : public Importer
@@ -878,10 +881,10 @@ void AssimpImporter::buildBuffer()
             if (!opts.interleave)
                 qDebug() << "  non-interleaved layout";
             QStringList sl;
-            foreach (const MeshInfo::BufferView &bv, meshInfo.views) sl << bv.name;
+            for (const MeshInfo::BufferView &bv : qAsConst(meshInfo.views)) sl << bv.name;
             qDebug() << "  buffer views:" << sl;
             sl.clear();
-            foreach (const MeshInfo::Accessor &acc, meshInfo.accessors) sl << acc.name;
+            for (const MeshInfo::Accessor &acc : qAsConst(meshInfo.accessors)) sl << acc.name;
             qDebug() << "  accessors:" << sl;
             qDebug() << "  material: #" << meshInfo.materialIndex;
         }
@@ -1011,9 +1014,9 @@ void AssimpImporter::parseCameras()
 
         c.name = name + QStringLiteral("_cam");
         c.aspectRatio = qFuzzyIsNull(cam->mAspect) ? 1.5f : cam->mAspect;
-        c.yfov = qRadiansToDegrees(cam->mHorizontalFOV);
-        if (c.yfov < 10) // this can't be right
-            c.yfov = 45;
+        c.yfov = cam->mHorizontalFOV;
+        if (c.yfov < (M_PI / 10.0)) // this can't be right (probably orthographic source camera)
+            c.yfov = float(M_PI / 4.0);
         c.znear = cam->mClipPlaneNear;
         c.zfar = cam->mClipPlaneFar;
 
@@ -1104,19 +1107,19 @@ void AssimpImporter::parseAnimations()
                 float t = float(a->mPositionKeys[kf].mTime);
                 aiVector3D v = a->mPositionKeys[kf].mValue;
                 animInfo.hasTranslation = true;
-                addKeyFrame(keyFrames, t, &v, Q_NULLPTR, Q_NULLPTR);
+                addKeyFrame(keyFrames, t, &v, nullptr, nullptr);
             }
             for (uint kf = 0; kf < a->mNumRotationKeys; ++kf) {
                 float t = float(a->mRotationKeys[kf].mTime);
                 aiQuaternion v = a->mRotationKeys[kf].mValue;
                 animInfo.hasRotation = true;
-                addKeyFrame(keyFrames, t, Q_NULLPTR, &v, Q_NULLPTR);
+                addKeyFrame(keyFrames, t, nullptr, &v, nullptr);
             }
             for (uint kf = 0; kf < a->mNumScalingKeys; ++kf) {
                 float t = float(a->mScalingKeys[kf].mTime);
                 aiVector3D v = a->mScalingKeys[kf].mValue;
                 animInfo.hasScale = true;
-                addKeyFrame(keyFrames, t, Q_NULLPTR, Q_NULLPTR, &v);
+                addKeyFrame(keyFrames, t, nullptr, nullptr, &v);
             }
 
             // Here we should ideally get rid of non-animated properties (that
@@ -1135,7 +1138,7 @@ void AssimpImporter::parseAnimations()
                 m_animations << animInfo;
 
                 if (opts.showLog) {
-                    foreach (const KeyFrame &kf, keyFrames) {
+                    for (const KeyFrame &kf : qAsConst(keyFrames)) {
                         QString msg;
                         QTextStream s(&msg);
                         s << "  @ " << kf.t;
@@ -1182,7 +1185,7 @@ bool Exporter::nodeIsUseful(const Importer::Node *n) const
     if (!n->meshes.isEmpty() || m_importer->cameraInfo().contains(n->name))
         return true;
 
-    foreach (const Importer::Node *c, n->children) {
+    for (const Importer::Node *c : n->children) {
         if (nodeIsUseful(c))
             return true;
     }
@@ -1192,7 +1195,8 @@ bool Exporter::nodeIsUseful(const Importer::Node *n) const
 
 void Exporter::copyExternalTextures(const QString &inputFilename)
 {
-    foreach (const QString &textureFilename, m_importer->externalTextures()) {
+    const auto textureFilenames = m_importer->externalTextures();
+    for (const QString &textureFilename : textureFilenames) {
         const QString dst = opts.outDir + textureFilename;
         m_files.insert(QFileInfo(dst).fileName());
         // External textures need copying only when output dir was specified.
@@ -1210,7 +1214,8 @@ void Exporter::copyExternalTextures(const QString &inputFilename)
 void Exporter::exportEmbeddedTextures()
 {
 #ifdef HAS_QIMAGE
-    foreach (const Importer::EmbeddedTextureInfo &embTex, m_importer->embeddedTextures()) {
+    const auto embeddedTextures = m_importer->embeddedTextures();
+    for (const Importer::EmbeddedTextureInfo &embTex : embeddedTextures) {
         QString fn = opts.outDir + embTex.name;
         m_files.insert(QFileInfo(fn).fileName());
         if (opts.showLog)
@@ -1225,13 +1230,16 @@ void Exporter::compressTextures()
     if (opts.texComp != Options::ETC1)
         return;
 
+    const auto textureFilenames = m_importer->externalTextures();
+    const auto embeddedTextures = m_importer->embeddedTextures();
     QStringList imageList;
-    foreach (const QString &textureFilename, m_importer->externalTextures())
+    imageList.reserve(textureFilenames.size() + embeddedTextures.size());
+    for (const QString &textureFilename : textureFilenames)
         imageList << opts.outDir + textureFilename;
-    foreach (const Importer::EmbeddedTextureInfo &embTex, m_importer->embeddedTextures())
+    for (const Importer::EmbeddedTextureInfo &embTex : embeddedTextures)
         imageList << opts.outDir + embTex.name;
 
-    foreach (const QString &filename, imageList) {
+    for (const QString &filename : qAsConst(imageList)) {
         if (QFileInfo(filename).suffix().toLower() != QStringLiteral("png"))
             continue;
         QByteArray cmd = QByteArrayLiteral("etc1tool ");
@@ -1273,6 +1281,8 @@ private:
         QVector<Param> attributes;
         QVector<Param> uniforms;
     };
+    friend class QTypeInfo<ProgramInfo>;
+    friend class QTypeInfo<ProgramInfo::Param>;
 
     void writeShader(const QString &src, const QString &dst, const QVector<QPair<QByteArray, QByteArray> > &substTab);
     QString exportNode(const Importer::Node *n, QJsonObject &nodes);
@@ -1290,7 +1300,7 @@ private:
     QVector<ProgramInfo> m_progs;
 
     struct TechniqueInfo {
-        TechniqueInfo() : opaque(true), prog(Q_NULLPTR) { }
+        TechniqueInfo() : opaque(true), prog(nullptr) { }
         TechniqueInfo(const QString &name, bool opaque, ProgramInfo *prog)
             : name(name)
             , opaque(opaque)
@@ -1305,6 +1315,7 @@ private:
         bool opaque;
         ProgramInfo *prog;
     };
+    friend class QTypeInfo<TechniqueInfo>;
     QVector<TechniqueInfo> m_techniques;
     QSet<ProgramInfo *> m_usedPrograms;
 
@@ -1313,6 +1324,11 @@ private:
 
     QHash<QString, bool> m_imageHasAlpha;
 };
+QT_BEGIN_NAMESPACE
+Q_DECLARE_TYPEINFO(GltfExporter::ProgramInfo,        Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(GltfExporter::ProgramInfo::Param, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(GltfExporter::TechniqueInfo,      Q_MOVABLE_TYPE);
+QT_END_NAMESPACE
 
 GltfExporter::GltfExporter(Importer *importer)
     : Exporter(importer)
@@ -1709,7 +1725,7 @@ QString GltfExporter::exportNode(const Importer::Node *n, QJsonObject &nodes)
     QJsonObject node;
     node["name"] = n->name;
     QJsonArray children;
-    foreach (const Importer::Node *c, n->children) {
+    for (const Importer::Node *c : n->children) {
         if (nodeIsUseful(c))
             children << exportNode(c, nodes);
     }
@@ -1760,9 +1776,10 @@ static inline void promoteColorsToRGBA(QJsonObject *obj)
             const QString key = it.key();
             if (key == QStringLiteral("ambient")
                     || key == QStringLiteral("diffuse")
-                    || key == QStringLiteral("specular"))
+                    || key == QStringLiteral("specular")) {
                 arr.append(1);
                 *it = arr;
+            }
         }
         ++it;
     }
@@ -1886,19 +1903,19 @@ void GltfExporter::exportMaterials(QJsonObject &materials, QHash<QString, QStrin
 
 void GltfExporter::writeShader(const QString &src, const QString &dst, const QVector<QPair<QByteArray, QByteArray> > &substTab)
 {
-    for (size_t i = 0; i < sizeof(shaders) / sizeof(Shader); ++i) {
+    for (const Shader shader : shaders) {
         QByteArray name = src.toUtf8();
-        if (!qstrcmp(shaders[i].name, name.constData())) {
+        if (!qstrcmp(shader.name, name.constData())) {
             QString outfn = opts.outDir + dst;
             QFile outf(outfn);
             if (outf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
                 m_files.insert(QFileInfo(outf.fileName()).fileName());
                 if (opts.showLog)
                     qDebug() << "Writing" << outfn;
-                foreach (const QString &s, QString::fromUtf8(shaders[i].text).split('\n')) {
-                    QString line = s;
-                    for (int i = 0; i < substTab.count(); ++i)
-                        line.replace(substTab[i].first, substTab[i].second);
+                const auto lines = QString::fromUtf8(shader.text).split('\n');
+                for (QString line : lines) {
+                    for (const auto &subst : substTab)
+                        line.replace(subst.first, subst.second);
                     line += QStringLiteral("\n");
                     outf.write(line.toUtf8());
                 }
@@ -1911,7 +1928,7 @@ void GltfExporter::writeShader(const QString &src, const QString &dst, const QVe
 
 void GltfExporter::exportParameter(QJsonObject &dst, const QVector<ProgramInfo::Param> &params)
 {
-    foreach (const ProgramInfo::Param &param, params) {
+    for (const ProgramInfo::Param &param : params) {
         QJsonObject parameter;
         parameter["type"] = int(param.type);
         if (!param.semantic.isEmpty())
@@ -1939,7 +1956,7 @@ void GltfExporter::exportTechniques(QJsonObject &obj, const QString &basename)
 
     QJsonObject shaders;
     QHash<QString, QString> shaderMap;
-    foreach (ProgramInfo *prog, m_usedPrograms) {
+    for (ProgramInfo *prog : qAsConst(m_usedPrograms)) {
         QString newName;
         if (!shaderMap.contains(prog->vertShader)) {
             QJsonObject vertexShader;
@@ -1947,13 +1964,13 @@ void GltfExporter::exportTechniques(QJsonObject &obj, const QString &basename)
             if (newName.isEmpty())
                 newName = newShaderName();
             QString key = basename + QStringLiteral("_") + newName + QStringLiteral("_v");
-            QString fn = QString(QStringLiteral("%1.%2")).arg(key).arg("vert");
+            QString fn = QString(QStringLiteral("%1.vert")).arg(key);
             vertexShader["uri"] = fn;
             writeShader(prog->vertShader, fn, m_subst_es2);
             if (opts.genCore) {
                 QJsonObject coreVertexShader;
                 QString coreKey = QString(QStringLiteral("%1_core").arg(key));
-                fn = QString(QStringLiteral("%1.%2")).arg(coreKey).arg("vert");
+                fn = QString(QStringLiteral("%1.vert")).arg(coreKey);
                 coreVertexShader["type"] = 35633;
                 coreVertexShader["uri"] = fn;
                 writeShader(prog->vertShader, fn, m_subst_core);
@@ -1969,13 +1986,13 @@ void GltfExporter::exportTechniques(QJsonObject &obj, const QString &basename)
             if (newName.isEmpty())
                 newName = newShaderName();
             QString key = basename + QStringLiteral("_") + newName + QStringLiteral("_f");
-            QString fn = QString(QStringLiteral("%1.%2")).arg(key).arg("frag");
+            QString fn = QString(QStringLiteral("%1.frag")).arg(key);
             fragmentShader["uri"] = fn;
             writeShader(prog->fragShader, fn, m_subst_es2);
             if (opts.genCore) {
                 QJsonObject coreFragmentShader;
                 QString coreKey = QString(QStringLiteral("%1_core").arg(key));
-                fn = QString(QStringLiteral("%1.%2")).arg(coreKey).arg("frag");
+                fn = QString(QStringLiteral("%1.frag")).arg(coreKey);
                 coreFragmentShader["type"] = 35632;
                 coreFragmentShader["uri"] = fn;
                 writeShader(prog->fragShader, fn, m_subst_core);
@@ -1989,47 +2006,51 @@ void GltfExporter::exportTechniques(QJsonObject &obj, const QString &basename)
     obj["shaders"] = shaders;
 
     QJsonObject programs;
-    QHash<ProgramInfo *, ProgramNames> programMap;
-    foreach (ProgramInfo *prog, m_usedPrograms) {
+    QHash<const ProgramInfo *, ProgramNames> programMap;
+    for (const ProgramInfo *prog : qAsConst(m_usedPrograms)) {
         QJsonObject program;
         program["vertexShader"] = shaderMap[prog->vertShader];
         program["fragmentShader"] = shaderMap[prog->fragShader];
         QJsonArray attrs;
-        foreach (const ProgramInfo::Param &param, prog->attributes)
+        for (const ProgramInfo::Param &param : prog->attributes) {
             attrs << param.nameInShader;
+        }
         program["attributes"] = attrs;
         QString programName = newProgramName();
         programMap[prog].name = programName;
         programs[programMap[prog].name] = program;
         if (opts.genCore) {
-            program["vertexShader"] = shaderMap[QString(prog->vertShader + QStringLiteral("_core"))];
-            program["fragmentShader"] = shaderMap[QString(prog->fragShader + QStringLiteral("_core"))];
+            program["vertexShader"] = shaderMap[QString(prog->vertShader + QLatin1String("_core"))];
+            program["fragmentShader"] = shaderMap[QString(prog->fragShader + QLatin1String("_core"))];
             QJsonArray attrs;
-            foreach (const ProgramInfo::Param &param, prog->attributes)
+            for (const ProgramInfo::Param &param : prog->attributes) {
                 attrs << param.nameInShader;
+            }
             program["attributes"] = attrs;
-            programMap[prog].coreName = programName + QStringLiteral("_core");
+            programMap[prog].coreName = programName + QLatin1String("_core");
             programs[programMap[prog].coreName] = program;
         }
     }
     obj["programs"] = programs;
 
     QJsonObject techniques;
-    foreach (const TechniqueInfo &techniqueInfo, m_techniques) {
+    for (const TechniqueInfo &techniqueInfo : qAsConst(m_techniques)) {
         QJsonObject technique;
         QJsonObject parameters;
-        ProgramInfo *prog = techniqueInfo.prog;
+        const ProgramInfo *prog = techniqueInfo.prog;
         exportParameter(parameters, prog->attributes);
         exportParameter(parameters, prog->uniforms);
         technique["parameters"] = parameters;
         technique["program"] = programMap[prog].name;
         QJsonObject progAttrs;
-        foreach (const ProgramInfo::Param &param, prog->attributes)
+        for (const ProgramInfo::Param &param : prog->attributes) {
             progAttrs[param.nameInShader] = param.name;
+        }
         technique["attributes"] = progAttrs;
         QJsonObject progUniforms;
-        foreach (const ProgramInfo::Param &param, prog->uniforms)
+        for (const ProgramInfo::Param &param : prog->uniforms) {
             progUniforms[param.nameInShader] = param.name;
+        }
         technique["uniforms"] = progUniforms;
         QJsonObject states;
         QJsonArray enabledStates;
@@ -2062,7 +2083,8 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
                                     QVector<Importer::MeshInfo::BufferView> &bvList,
                                     QVector<Importer::MeshInfo::Accessor> &accList)
 {
-    if (m_importer->animations().isEmpty()) {
+    const auto animationInfos = m_importer->animations();
+    if (animationInfos.empty()) {
         obj["animations"] = QJsonObject();
         return;
     }
@@ -2071,7 +2093,7 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
     QByteArray extraData;
 
     int sz = 0;
-    foreach (const Importer::AnimationInfo &ai, m_importer->animations())
+    for (const Importer::AnimationInfo &ai : animationInfos)
         sz += ai.keyFrames.count() * (1 + 3 + 4 + 3) * sizeof(float);
     extraData.resize(sz);
 
@@ -2079,7 +2101,7 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
     float *p = base;
 
     QJsonObject animations;
-    foreach (const Importer::AnimationInfo &ai, m_importer->animations()) {
+    for (const Importer::AnimationInfo &ai : animationInfos) {
         QJsonObject animation;
         animation["name"] = ai.name;
         animation["count"] = ai.keyFrames.count();
@@ -2145,7 +2167,7 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
         acc.componentType = GLT_FLOAT;
         acc.type = QStringLiteral("SCALAR");
         acc.offset = uint((p - base) * sizeof(float));
-        foreach (const Importer::KeyFrame &kf, ai.keyFrames)
+        for (const Importer::KeyFrame &kf : ai.keyFrames)
             *p++ = kf.t;
         parameters["TIME"] = acc.name;
         accList << acc;
@@ -2156,7 +2178,7 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
             acc.type = QStringLiteral("VEC3");
             acc.offset = uint((p - base) * sizeof(float));
             QVector<float> lastV;
-            foreach (const Importer::KeyFrame &kf, ai.keyFrames) {
+            for (const Importer::KeyFrame &kf : ai.keyFrames) {
                 const QVector<float> *v = kf.transValid ? &kf.trans : &lastV;
                 *p++ = v->at(0);
                 *p++ = v->at(1);
@@ -2173,7 +2195,7 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
             acc.type = QStringLiteral("VEC4");
             acc.offset = uint((p - base) * sizeof(float));
             QVector<float> lastV;
-            foreach (const Importer::KeyFrame &kf, ai.keyFrames) {
+            for (const Importer::KeyFrame &kf : ai.keyFrames) {
                 const QVector<float> *v = kf.rotValid ? &kf.rot : &lastV;
                 *p++ = v->at(1); // x
                 *p++ = v->at(2); // y
@@ -2191,7 +2213,7 @@ void GltfExporter::exportAnimations(QJsonObject &obj,
             acc.type = QStringLiteral("VEC3");
             acc.offset = uint((p - base) * sizeof(float));
             QVector<float> lastV;
-            foreach (const Importer::KeyFrame &kf, ai.keyFrames) {
+            for (const Importer::KeyFrame &kf : ai.keyFrames) {
                 const QVector<float> *v = kf.scaleValid ? &kf.scale : &lastV;
                 *p++ = v->at(0);
                 *p++ = v->at(1);
@@ -2290,7 +2312,7 @@ void GltfExporter::save(const QString &inputFilename)
     m_obj["buffers"] = buffers;
 
     QJsonObject bufferViews;
-    foreach (const Importer::MeshInfo::BufferView &bv, bvList) {
+    for (const Importer::MeshInfo::BufferView &bv : qAsConst(bvList)) {
         QJsonObject bufferView;
         bufferView["buffer"] = bufList[bv.bufIndex].name;
         bufferView["byteLength"] = int(bv.length);
@@ -2302,7 +2324,7 @@ void GltfExporter::save(const QString &inputFilename)
     m_obj["bufferViews"] = bufferViews;
 
     QJsonObject accessors;
-    foreach (const Importer::MeshInfo::Accessor &acc, accList) {
+    for (const Importer::MeshInfo::Accessor &acc : qAsConst(accList)) {
         QJsonObject accessor;
         accessor["bufferView"] = acc.bufferView;
         accessor["byteOffset"] = int(acc.offset);
@@ -2320,14 +2342,14 @@ void GltfExporter::save(const QString &inputFilename)
 
     QJsonObject meshes;
     for (uint i = 0; i < m_importer->meshCount(); ++i) {
-        Importer::MeshInfo meshInfo = m_importer->meshInfo(i);
+        const Importer::MeshInfo meshInfo = m_importer->meshInfo(i);
         QJsonObject mesh;
         mesh["name"] = meshInfo.originalName;
         QJsonArray prims;
         QJsonObject prim;
         prim["mode"] = 4; // triangles
         QJsonObject attrs;
-        foreach (const Importer::MeshInfo::Accessor &acc, meshInfo.accessors) {
+        for (const Importer::MeshInfo::Accessor &acc : meshInfo.accessors) {
             if (acc.usage != QStringLiteral("INDEX"))
                 attrs[acc.usage] = acc.name;
             else
@@ -2342,7 +2364,8 @@ void GltfExporter::save(const QString &inputFilename)
     m_obj["meshes"] = meshes;
 
     QJsonObject cameras;
-    foreach (const Importer::CameraInfo &camInfo, m_importer->cameraInfo()) {
+    const auto cameraInfos = m_importer->cameraInfo();
+    for (const Importer::CameraInfo &camInfo : cameraInfos) {
         QJsonObject camera;
         QJsonObject persp;
         persp["aspect_ratio"] = camInfo.aspectRatio;
@@ -2357,7 +2380,7 @@ void GltfExporter::save(const QString &inputFilename)
 
     QJsonArray sceneNodes;
     QJsonObject nodes;
-    foreach (const Importer::Node *n, m_importer->rootNode()->children) {
+    for (const Importer::Node *n : qAsConst(m_importer->rootNode()->children)) {
         if (nodeIsUseful(n))
             sceneNodes << exportNode(n, nodes);
     }
@@ -2447,7 +2470,7 @@ void GltfExporter::save(const QString &inputFilename)
         QByteArray pre = "<RCC><qresource prefix=\"/models\">\n";
         QByteArray post = "</qresource></RCC>\n";
         f.write(pre);
-        foreach (const QString &file,m_files) {
+        for (const QString &file : qAsConst(m_files)) {
             QString line = QString(QStringLiteral("  <file>%1</file>\n")).arg(file);
             f.write(line.toUtf8());
         }
@@ -2527,12 +2550,13 @@ int main(int argc, char **argv)
         QDir().mkpath(opts.outDir);
     }
 
-    if (cmdLine.positionalArguments().isEmpty())
+    const auto fileNames = cmdLine.positionalArguments();
+    if (fileNames.isEmpty())
         cmdLine.showHelp();
 
     AssimpImporter importer;
     GltfExporter exporter(&importer);
-    foreach (const QString &fn, cmdLine.positionalArguments()) {
+    for (const QString &fn : fileNames) {
         if (!importer.load(fn)) {
             qWarning() << "Failed to import" << fn;
             continue;

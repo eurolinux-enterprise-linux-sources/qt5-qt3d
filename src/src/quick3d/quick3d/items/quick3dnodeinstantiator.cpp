@@ -2,34 +2,37 @@
 **
 ** Copyright (C) 2013 Research In Motion.
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -39,13 +42,13 @@
 
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlComponent>
-#include <QtQml/QQmlInfo>
 #include <QtQml/QQmlError>
-#include <QtQml/private/qqmlobjectmodel_p.h>
+#include <QtQml/QQmlInfo>
+
+#include <Qt3DCore/private/qnode_p.h>
+#include <QtQml/private/qqmlchangeset_p.h>
 #include <QtQml/private/qqmldelegatemodel_p.h>
-#include <private/qnode_p.h>
-#include <private/qqmlchangeset_p.h>
-#include <private/qqmlobjectmodel_p.h>
+#include <QtQml/private/qqmlobjectmodel_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -95,7 +98,8 @@ Quick3DNodeInstantiatorPrivate::Quick3DNodeInstantiatorPrivate()
 
 Quick3DNodeInstantiatorPrivate::~Quick3DNodeInstantiatorPrivate()
 {
-    qDeleteAll(m_objects);
+    if (m_ownModel)
+        delete m_instanceModel;
 }
 
 void Quick3DNodeInstantiatorPrivate::clear()
@@ -107,11 +111,11 @@ void Quick3DNodeInstantiatorPrivate::clear()
         return;
 
     for (int i = 0; i < m_objects.count(); i++) {
-        q->objectRemoved(i, m_objects[i]);
+        emit q->objectRemoved(i, m_objects[i]);
         m_instanceModel->release(m_objects[i]);
     }
     m_objects.clear();
-    q->objectChanged();
+    emit q->objectChanged();
 }
 
 void Quick3DNodeInstantiatorPrivate::regenerate()
@@ -126,7 +130,7 @@ void Quick3DNodeInstantiatorPrivate::regenerate()
 
     if (!m_active || !m_instanceModel || !m_instanceModel->count() || !m_instanceModel->isValid()) {
         if (prevCount)
-            q->countChanged();
+            emit q->countChanged();
         return;
     }
 
@@ -137,7 +141,7 @@ void Quick3DNodeInstantiatorPrivate::regenerate()
             _q_createdItem(i, object);
     }
     if (q->count() != prevCount)
-        q->countChanged();
+        emit q->countChanged();
 }
 
 void Quick3DNodeInstantiatorPrivate::_q_createdItem(int idx, QObject *item)
@@ -145,11 +149,11 @@ void Quick3DNodeInstantiatorPrivate::_q_createdItem(int idx, QObject *item)
     Q_Q(Quick3DNodeInstantiator);
     if (m_objects.contains(item)) //Case when it was created synchronously in regenerate
         return;
-    static_cast<QNode *>(item)->setParent(q);
+    static_cast<QNode *>(item)->setParent(q->parentNode());
     m_objects.insert(idx, item);
     if (m_objects.count() == 1)
-        q->objectChanged();
-    q->objectAdded(idx, item);
+        emit q->objectChanged();
+    emit q->objectAdded(idx, item);
 }
 
 void Quick3DNodeInstantiatorPrivate::_q_modelUpdated(const QQmlChangeSet &changeSet, bool reset)
@@ -162,13 +166,14 @@ void Quick3DNodeInstantiatorPrivate::_q_modelUpdated(const QQmlChangeSet &change
     if (reset) {
         regenerate();
         if (changeSet.difference() != 0)
-            q->countChanged();
+            emit q->countChanged();
         return;
     }
 
     int difference = 0;
     QHash<int, QVector<QPointer<QObject> > > moved;
-    Q_FOREACH (const QQmlChangeSet::Change &remove, changeSet.removes()) {
+    const auto removes = changeSet.removes();
+    for (const QQmlChangeSet::Change &remove : removes) {
         int index = qMin(remove.index, m_objects.count());
         int count = qMin(remove.index + remove.count, m_objects.count()) - index;
         if (remove.isMove()) {
@@ -180,7 +185,7 @@ void Quick3DNodeInstantiatorPrivate::_q_modelUpdated(const QQmlChangeSet &change
             while (count--) {
                 QObject *obj = m_objects.at(index);
                 m_objects.remove(index);
-                q->objectRemoved(index, obj);
+                emit q->objectRemoved(index, obj);
                 if (obj)
                     m_instanceModel->release(obj);
             }
@@ -189,7 +194,8 @@ void Quick3DNodeInstantiatorPrivate::_q_modelUpdated(const QQmlChangeSet &change
         difference -= remove.count;
     }
 
-    Q_FOREACH (const QQmlChangeSet::Change &insert, changeSet.inserts()) {
+    const auto inserts = changeSet.inserts();
+    for (const QQmlChangeSet::Change &insert : inserts) {
         int index = qMin(insert.index, m_objects.count());
         if (insert.isMove()) {
             QVector<QPointer<QObject> > movedObjects = moved.value(insert.moveId);
@@ -204,7 +210,7 @@ void Quick3DNodeInstantiatorPrivate::_q_modelUpdated(const QQmlChangeSet &change
     }
 
     if (difference != 0)
-        q->countChanged();
+        emit q->countChanged();
 }
 
 void Quick3DNodeInstantiatorPrivate::makeModel()
@@ -239,18 +245,14 @@ void Quick3DNodeInstantiatorPrivate::makeModel()
 Quick3DNodeInstantiator::Quick3DNodeInstantiator(QNode *parent)
     : QNode(*new Quick3DNodeInstantiatorPrivate, parent)
 {
-}
-
-Quick3DNodeInstantiator::~Quick3DNodeInstantiator()
-{
-    QNode::cleanup();
+    connect(this, &QNode::parentChanged, this, &Quick3DNodeInstantiator::onParentChanged);
 }
 
 /*!
-    \qmlsignal Qt3D.Core::NodeInstantiator::objectAdded(int index, QtObject node)
+    \qmlsignal Qt3D.Core::NodeInstantiator::objectAdded(int index, QtObject object)
 
     This signal is emitted when a node is added to the NodeInstantiator. The \a index
-    parameter holds the index which the node has been given, and the \a node
+    parameter holds the index which the node has been given, and the \a object
     parameter holds the \l Node that has been added.
 
     The corresponding handler is \c onNodeAdded.
@@ -500,21 +502,33 @@ void Quick3DNodeInstantiator::componentComplete()
     }
 }
 
-void Quick3DNodeInstantiator::copy(const QNode *ref)
+/*!
+ \internal
+*/
+void Quick3DNodeInstantiator::onParentChanged(QObject *parent)
 {
-    QNode::copy(ref);
-    const Quick3DNodeInstantiator *instantiator = static_cast<const Quick3DNodeInstantiator*>(ref);
-    // We only need to clone the children as the instantiator itself has no
-    // corresponding backend node type.
-    for (int i = 0; i < instantiator->d_func()->m_objects.size(); ++i) {
-        QNode *n = qobject_cast<QNode *>(instantiator->d_func()->m_objects.at(i));
-        if (!n)
-            continue;
-        QNode *clonedNode = QNode::clone(n);
-        clonedNode->setParent(this);
-        d_func()->m_objects.append(clonedNode);
-    }
+    Q_D(const Quick3DNodeInstantiator);
+    auto parentNode = static_cast<QNode *>(parent);
+    for (auto obj : d->m_objects)
+        static_cast<QNode *>(obj.data())->setParent(parentNode);
 }
+
+// TODO: Avoid cloning here
+//void Quick3DNodeInstantiator::copy(const QNode *ref)
+//{
+//    QNode::copy(ref);
+//    const Quick3DNodeInstantiator *instantiator = static_cast<const Quick3DNodeInstantiator*>(ref);
+//    // We only need to clone the children as the instantiator itself has no
+//    // corresponding backend node type.
+//    for (int i = 0; i < instantiator->d_func()->m_objects.size(); ++i) {
+//        QNode *n = qobject_cast<QNode *>(instantiator->d_func()->m_objects.at(i));
+//        if (!n)
+//            continue;
+//        QNode *clonedNode = QNode::clone(n);
+//        clonedNode->setParent(this);
+//        d_func()->m_objects.append(clonedNode);
+//    }
+//}
 
 } // namespace Quick
 } // namespace Qt3DCore

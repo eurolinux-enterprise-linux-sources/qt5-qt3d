@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -63,10 +55,14 @@ void tst_RenderQueue::setRenderViewCount()
     // GIVEN
     Qt3DRender::Render::RenderQueue renderQueue;
 
+    // THEN
+    QCOMPARE(renderQueue.wasReset(), true);
+
     // WHEN
     renderQueue.setTargetRenderViewCount(7);
 
     // THEN
+    QCOMPARE(renderQueue.wasReset(), false);
     QVERIFY(renderQueue.targetRenderViewCount() == 7);
     QVERIFY(renderQueue.currentRenderViewCount()== 0);
 }
@@ -82,6 +78,7 @@ void tst_RenderQueue::circleQueues()
 
         // WHEN
         renderQueue.reset();
+        renderQueue.setTargetRenderViewCount(7);
 
         // THEN
         QVERIFY(!renderQueue.isFrameQueueComplete());
@@ -145,9 +142,8 @@ class SimpleWorker : public QThread
 {
     Q_OBJECT
 public:
-    QWaitCondition m_waitTimeToSubmit;
-    QWaitCondition m_waitToFillQueue;
-    QMutex m_mutex;
+    QSemaphore m_waitSubmit;
+    QSemaphore m_waitQueue;
     Qt3DRender::Render::RenderQueue *m_renderQueues;
 
 public Q_SLOTS:
@@ -155,9 +151,7 @@ public Q_SLOTS:
     void run() Q_DECL_FINAL // In Thread
     {
         for (int i = 0; i < 5; i++) {
-            QMutexLocker lock(&m_mutex);
-            m_waitToFillQueue.wait(&m_mutex);
-            lock.unlock();
+            m_waitQueue.acquire();
 
             QVERIFY(m_renderQueues->currentRenderViewCount() == 0);
             QVERIFY(!m_renderQueues->isFrameQueueComplete());
@@ -175,7 +169,7 @@ public Q_SLOTS:
             }
 
             QVERIFY(m_renderQueues->isFrameQueueComplete());
-            m_waitTimeToSubmit.wakeOne();
+            m_waitSubmit.release();
         }
     }
 };
@@ -194,18 +188,13 @@ void tst_RenderQueue::concurrentQueueAccess()
     QVERIFY(jobsThread->m_renderQueues->targetRenderViewCount() == renderQueue->targetRenderViewCount());
     QVERIFY(jobsThread->m_renderQueues->currentRenderViewCount() == renderQueue->currentRenderViewCount());
 
-
     // Start thread
     jobsThread->start();
 
-    QThread::msleep(500); // To be sure the thread is properly started
-
-    jobsThread->m_waitToFillQueue.wakeAll();
+    jobsThread->m_waitQueue.release();
 
     for (int i = 0; i < 5; ++i) {
-        QMutexLocker lock(&jobsThread->m_mutex);
-        jobsThread->m_waitTimeToSubmit.wait(&jobsThread->m_mutex);
-        lock.unlock();
+        jobsThread->m_waitSubmit.acquire();
 
         // WHEN unlocked
         // THEN
@@ -214,7 +203,8 @@ void tst_RenderQueue::concurrentQueueAccess()
 
         // reset queue for next frame
         renderQueue->reset();
-        jobsThread->m_waitToFillQueue.wakeAll();
+        renderQueue->setTargetRenderViewCount(7);
+        jobsThread->m_waitQueue.release();
     }
     jobsThread->wait();
 }
@@ -228,6 +218,7 @@ void tst_RenderQueue::resetQueue()
         // WHEN
         renderQueue.setTargetRenderViewCount(5);
         // THEN
+        QCOMPARE(renderQueue.wasReset(), false);
         QVERIFY(renderQueue.currentRenderViewCount() == 0);
 
         // WHEN
@@ -241,6 +232,7 @@ void tst_RenderQueue::resetQueue()
 
         // WHEN
         renderQueue.reset();
+        QCOMPARE(renderQueue.wasReset(), true);
         // THEN
         QVERIFY(renderQueue.currentRenderViewCount() == 0);
     }

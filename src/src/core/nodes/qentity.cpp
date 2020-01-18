@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -36,23 +39,22 @@
 
 #include "qentity.h"
 #include "qentity_p.h"
-#include "qcomponent.h"
-#include "qcomponent_p.h"
 
-#include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/qscenepropertychange.h>
+#include <Qt3DCore/qcomponent.h>
+#include <Qt3DCore/qcomponentaddedchange.h>
+#include <Qt3DCore/qcomponentremovedchange.h>
+#include <Qt3DCore/qnodecreatedchange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <QtCore/QMetaObject>
+#include <QtCore/QMetaProperty>
+
 #include <Qt3DCore/private/corelogging_p.h>
-#include <QMetaObject>
-#include <QMetaProperty>
+#include <Qt3DCore/private/qcomponent_p.h>
+#include <Qt3DCore/private/qscene_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DCore {
-
-QEntityPrivate::QEntityPrivate()
-    : QNodePrivate()
-    , m_parentEntityId()
-{}
 
 /*!
     \class Qt3DCore::QEntity
@@ -68,29 +70,27 @@ QEntityPrivate::QEntityPrivate()
     backend aspect will be able to interpret and process an Entity by
     recognizing which components it is made up of. One aspect may decide to only
     process entities composed of a single Qt3DCore::QTransform component whilst
-    another may focus on Qt3DCore::QMouseInput.
+    another may focus on Qt3DInput::QMouseHandler.
 
     \sa Qt3DCore::QComponent, Qt3DCore::QTransform
-*/
+ */
+
+/*! \internal */
+QEntityPrivate::QEntityPrivate()
+    : QNodePrivate()
+    , m_parentEntityId()
+{}
+
+/*! \internal */
+QEntityPrivate::~QEntityPrivate()
+{
+}
 
 /*!
     Constructs a new Qt3DCore::QEntity instance with \a parent as parent.
-*/
+ */
 QEntity::QEntity(QNode *parent)
-    : QNode(*new QEntityPrivate, parent)
-{
-}
-
-QEntity::~QEntity()
-{
-    // remove all component aggregations
-    removeAllComponents();
-
-    QNode::cleanup();
-    // If all children are removed
-    // That includes the components that are parented by this entity
-
-}
+    : QEntity(*new QEntityPrivate, parent) {}
 
 /*! \internal */
 QEntity::QEntity(QEntityPrivate &dd, QNode *parent)
@@ -98,33 +98,30 @@ QEntity::QEntity(QEntityPrivate &dd, QNode *parent)
 {
 }
 
-/*!
-    Copies all the properties and components of the Qt3DCore::QEntity \a ref to the
-    current instance.
-*/
-void QEntity::copy(const QNode *ref)
+QEntity::~QEntity()
 {
-    QNode::copy(ref);
-    const QEntity *entity = static_cast<const QEntity*>(ref);
-    d_func()->m_visible = entity->d_func()->m_visible;
-    d_func()->m_parentEntityId = entity->d_func()->parentEntityId();
-
-    Q_FOREACH (QComponent *c, entity->d_func()->m_components) {
-        QNode *ccclone = QNode::clone(c);
-        addComponent(qobject_cast<QComponent *>(ccclone));
-    }
+    // remove all component aggregations
+    Q_D(const QEntity);
+    // to avoid hammering m_components by repeated removeComponent()
+    // calls below, move all contents out, so the removeOne() calls in
+    // removeComponent() don't actually remove something:
+    const auto components = std::move(d->m_components);
+    for (QComponent *comp : components)
+        removeComponent(comp);
 }
+
+
 /*!
-    \typedef Qt3DCore::QComponentList
+    \typedef Qt3DCore::QComponentVector
     \relates Qt3DCore::QEntity
 
     List of QComponent pointers.
-*/
+ */
 
 /*!
     Returns the list of Qt3DCore::QComponent instances the entity is referencing.
-*/
-QList<QComponent *> QEntity::components() const
+ */
+QComponentVector QEntity::components() const
 {
     Q_D(const QEntity);
     return d->m_components;
@@ -135,7 +132,7 @@ QList<QComponent *> QEntity::components() const
 
     \note If the Qt3DCore::QComponent has no parent, the Qt3DCore::QEntity will set
     itself as its parent thereby taking ownership of the component.
-*/
+ */
 void QEntity::addComponent(QComponent *comp)
 {
     Q_D(QEntity);
@@ -146,27 +143,28 @@ void QEntity::addComponent(QComponent *comp)
     if (d->m_components.count(comp) != 0)
         return ;
 
-    d->m_components.append(comp);
-    // We only set the Entity as the Component's parent when it has no parent
-    // This will be the case mostly on C++ but rarely in QML
+    // We need to add it as a child of the current node if it has been declared inline
+    // Or not previously added as a child of the current node so that
+    // 1) The backend gets notified about it's creation
+    // 2) When the current node is destroyed, it gets destroyed as well
     if (!comp->parent())
         comp->setParent(this);
 
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        // Sending a full fledged component in the notification as we'll need
-        // to know which type of component it was and its properties to create
-        // the backend object
-        QScenePropertyChangePtr propertyChange(new QScenePropertyChange(ComponentAdded, QSceneChange::Node, id()));
-        propertyChange->setPropertyName("component");
-        propertyChange->setValue(QVariant::fromValue(QNodePtr(QNode::clone(comp), &QNodePrivate::nodePtrDeleter)));
-        d->notifyObservers(propertyChange);
+    d->m_components.append(comp);
+
+    // Ensures proper bookkeeping
+    d->registerDestructionHelper(comp, &QEntity::removeComponent, d->m_components);
+
+    if (d->m_changeArbiter) {
+        const auto componentAddedChange = QComponentAddedChangePtr::create(this, comp);
+        d->notifyObservers(componentAddedChange);
     }
     static_cast<QComponentPrivate *>(QComponentPrivate::get(comp))->addEntity(this);
 }
 
 /*!
     Removes the reference to \a comp.
-*/
+ */
 void QEntity::removeComponent(QComponent *comp)
 {
     Q_CHECK_PTR(comp);
@@ -175,27 +173,15 @@ void QEntity::removeComponent(QComponent *comp)
 
     static_cast<QComponentPrivate *>(QComponentPrivate::get(comp))->removeEntity(this);
 
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        // Sending just the component id as it is the only part needed to
-        // cleanup the backend object. This way we avoid a clone which might
-        // fail in the case of large scenes.
-        QScenePropertyChangePtr propertyChange(new QScenePropertyChange(ComponentRemoved, QSceneChange::Node, id()));
-        propertyChange->setValue(QVariant::fromValue(comp->id()));
-        propertyChange->setPropertyName("componentId");
-        d->notifyObservers(propertyChange);
+    if (d->m_changeArbiter) {
+        const auto componentRemovedChange = QComponentRemovedChangePtr::create(this, comp);
+        d->notifyObservers(componentRemovedChange);
     }
 
     d->m_components.removeOne(comp);
-}
 
-/*!
-    Remove all references to the components.
-*/
-void QEntity::removeAllComponents()
-{
-    Q_D(const QEntity);
-    Q_FOREACH (QComponent *comp, d->m_components)
-        removeComponent(comp);
+    // Remove bookkeeping connection
+    d->unregisterDestructionHelper(comp);
 }
 
 /*!
@@ -203,14 +189,14 @@ void QEntity::removeAllComponents()
     immediate parent isn't a Qt3DCore::QEntity, this function traverses up the
     scene hierarchy until a parent Qt3DCore::QEntity is found. If no
     Qt3DCore::QEntity parent can be found, returns null.
-*/
+ */
 QEntity *QEntity::parentEntity() const
 {
     Q_D(const QEntity);
     QNode *parentNode = QNode::parentNode();
     QEntity *parentEntity = qobject_cast<QEntity *>(parentNode);
 
-    while (parentEntity == Q_NULLPTR && parentNode != Q_NULLPTR) {
+    while (parentEntity == nullptr && parentNode != nullptr) {
         parentNode = parentNode->parentNode();
         parentEntity = qobject_cast<QEntity*>(parentNode);
     }
@@ -225,10 +211,10 @@ QEntity *QEntity::parentEntity() const
 }
 
 /*!
- Returns the Qt3DCore::QNodeId id of the parent Qt3DCore::QEntity instance of the
- current Qt3DCore::QEntity object. The QNodeId isNull method will return true if
- there is no Qt3DCore::QEntity parent of the current Qt3DCore::QEntity in the scene
- hierarchy.
+    Returns the Qt3DCore::QNodeId id of the parent Qt3DCore::QEntity instance of the
+    current Qt3DCore::QEntity object. The QNodeId isNull method will return true if
+    there is no Qt3DCore::QEntity parent of the current Qt3DCore::QEntity in the scene
+    hierarchy.
  */
 QNodeId QEntityPrivate::parentEntityId() const
 {
@@ -236,6 +222,23 @@ QNodeId QEntityPrivate::parentEntityId() const
     if (m_parentEntityId.isNull())
         q->parentEntity();
     return m_parentEntityId;
+}
+
+QNodeCreatedChangeBasePtr QEntity::createNodeCreationChange() const
+{
+    auto creationChange = QNodeCreatedChangePtr<QEntityData>::create(this);
+    auto &data = creationChange->data;
+
+    Q_D(const QEntity);
+    data.parentEntityId = parentEntity() ? parentEntity()->id() : Qt3DCore::QNodeId();
+    data.componentIdsAndTypes.reserve(d->m_components.size());
+    const QComponentVector &components = d->m_components;
+    for (QComponent *c : components) {
+        const auto idAndType = QNodeIdTypePair(c->id(), QNodePrivate::findStaticMetaObject(c->metaObject()));
+        data.componentIdsAndTypes.push_back(idAndType);
+    }
+
+    return creationChange;
 }
 
 } // namespace Qt3DCore

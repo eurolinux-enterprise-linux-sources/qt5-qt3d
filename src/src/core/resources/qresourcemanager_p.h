@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,12 +51,23 @@
 // We mean it.
 //
 
-#include <QtGlobal>
-#include <QMutex>
-#include <QHash>
 #include <Qt3DCore/qt3dcore_global.h>
-#include "qhandle_p.h"
-#include "qhandlemanager_p.h"
+#include <QtCore/QHash>
+#include <QtCore/QMutex>
+#include <QtCore/QReadLocker>
+#include <QtCore/QReadWriteLock>
+#include <QtCore/QtGlobal>
+#include <limits>
+
+#include <Qt3DCore/private/qhandle_p.h>
+
+// Silence complaints about unreferenced local variables in
+// ArrayAllocatingPolicy::deallocateBuckets() when the compiler
+// inlines the call to the dtor and it is empty. Default warning
+// setting re-enabled at bottom of this file
+#if defined(Q_CC_MSVC)
+#pragma warning(disable : 4189)
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -62,6 +76,20 @@ namespace Qt3DCore {
 template <class Host>
 struct NonLockingPolicy
 {
+    struct ReadLocker
+    {
+        ReadLocker(const NonLockingPolicy*) {}
+        void unlock() {}
+        void relock() {}
+    };
+
+    struct WriteLocker
+    {
+        WriteLocker(const NonLockingPolicy*) {}
+        void unlock() {}
+        void relock() {}
+    };
+
     struct Locker
     {
         Locker(const NonLockingPolicy*) {}
@@ -76,6 +104,48 @@ class ObjectLevelLockingPolicy
 public :
     ObjectLevelLockingPolicy()
     {}
+
+    class ReadLocker
+    {
+    public:
+        ReadLocker(const ObjectLevelLockingPolicy *host)
+            : m_locker(&host->m_readWritelock)
+        { }
+
+        void unlock()
+        {
+            m_locker.unlock();
+        }
+
+        void relock()
+        {
+            m_locker.relock();
+        }
+
+    private:
+        QReadLocker m_locker;
+    };
+
+    class WriteLocker
+    {
+    public:
+        WriteLocker(const ObjectLevelLockingPolicy *host)
+            : m_locker(&host->m_readWritelock)
+        { }
+
+        void unlock()
+        {
+            m_locker.unlock();
+        }
+
+        void relock()
+        {
+            m_locker.relock();
+        }
+
+    private:
+        QWriteLocker m_locker;
+    };
 
     class Locker
     {
@@ -100,6 +170,9 @@ public :
 
 private:
     friend class Locker;
+    friend class ReadLocker;
+    friend class WriteLocker;
+    mutable QReadWriteLock m_readWritelock;
     mutable QMutex m_lock;
 };
 
@@ -147,15 +220,16 @@ struct Int2Type
     };
 };
 
-template <typename T, uint INDEXBITS>
+template <typename T, uint INDEXBITS = 16>
 class ArrayAllocatingPolicy
 {
 public:
+    typedef QHandle<T, INDEXBITS> Handle;
     ArrayAllocatingPolicy()
-        : m_numBuckets(0)
-        , m_numConstructed(0)
     {
-        reset();
+        m_freeList.resize(MaxSize);
+        for (int i = 0; i < MaxSize; i++)
+            m_freeList[i] = MaxSize - (i + 1);
     }
 
     ~ArrayAllocatingPolicy()
@@ -163,7 +237,7 @@ public:
         deallocateBuckets();
     }
 
-    T* allocateResource()
+    Handle allocateResource()
     {
         Q_ASSERT(!m_freeList.isEmpty());
         int idx = m_freeList.takeLast();
@@ -172,9 +246,11 @@ public:
         Q_ASSERT(bucketIdx <= m_numBuckets);
         if (bucketIdx == m_numBuckets) {
             m_bucketDataPtrs[bucketIdx] = static_cast<T*>(malloc(sizeof(T) * BucketSize));
+            m_counters[bucketIdx] = static_cast<short *>(malloc(sizeof(short) * BucketSize));
             // ### memset is only needed as long as we also use this for primitive types (see FrameGraphManager)
             // ### remove once this is fixed, add a static_assert on T instead
             memset((void *)m_bucketDataPtrs[bucketIdx], 0, sizeof(T) * BucketSize);
+            memset(m_counters[bucketIdx], 0, sizeof(short) * BucketSize);
             ++m_numBuckets;
         }
 
@@ -183,39 +259,47 @@ public:
             new (m_bucketDataPtrs[bucketIdx] + localIdx) T;
             ++m_numConstructed;
         }
+        Q_STATIC_ASSERT(Handle::MaxCounter < USHRT_MAX);
+        Q_ASSERT(m_counters[bucketIdx][localIdx] <= 0);
+        m_counters[bucketIdx][localIdx] *= -1;
+        ++m_counters[bucketIdx][localIdx];
+        if (m_counters[bucketIdx][localIdx] >= Handle::MaxCounter)
+            m_counters[bucketIdx][localIdx] = 1;
 
+        return Handle(idx, m_counters[bucketIdx][localIdx]);
+    }
+
+    void releaseResource(Handle h)
+    {
+        int idx = h.index();
+        int bucketIdx = idx / BucketSize;
+        int localIdx = idx % BucketSize;
+
+        Q_ASSERT(h.counter() == static_cast<quint32>(m_counters[bucketIdx][localIdx]));
+        T *r = m_bucketDataPtrs[bucketIdx] + localIdx;
+
+        m_freeList.append(idx);
+        m_counters[bucketIdx][localIdx] *= -1;
+        performCleanup(r, Int2Type<QResourceInfo<T>::needsCleanup>());
+    }
+
+    T *data(Handle h/*, bool *ok = 0*/) {
+        int bucketIdx = h.index() / BucketSize;
+        int localIdx = h.index() % BucketSize;
+
+        if (h.counter() != static_cast<quint32>(m_counters[bucketIdx][localIdx])) {
+            return nullptr;
+        }
         return m_bucketDataPtrs[bucketIdx] + localIdx;
     }
 
-    void releaseResource(T *r)
-    {
-        // search linearly over buckets to find the index of the resource
-        // and put it into the free list
-        for (int bucketIdx = 0; bucketIdx < m_numBuckets; ++bucketIdx) {
-            const T* firstItem = m_bucketDataPtrs[bucketIdx];
-            if (firstItem > r || r >= firstItem + BucketSize) {
-                // resource is not in this bucket when its pointer address
-                // is outside the address range spanned by the addresses of
-                // the first and last items in a bucket
-                continue;
-            }
-
-            // now we found the bucket we can reconstruct the global index
-            // and put it back into the free list
-            const int localIdx = static_cast<int>(r - firstItem);
-            const int idx = bucketIdx * BucketSize + localIdx;
-            m_freeList.append(idx);
-            performCleanup(r, Int2Type<QResourceInfo<T>::needsCleanup>());
-            break;
+    void for_each(std::function<void(T*)> f) {
+        for (int idx = 0; idx < m_numConstructed; ++idx) {
+            int bucketIdx = idx / BucketSize;
+            int localIdx = idx % BucketSize;
+            T * t = m_bucketDataPtrs[bucketIdx] + localIdx;
+            f(t);
         }
-    }
-
-    void reset()
-    {
-        deallocateBuckets();
-        m_freeList.resize(MaxSize);
-        for (int i = 0; i < MaxSize; i++)
-            m_freeList[i] = MaxSize - (i + 1);
     }
 
 private:
@@ -240,13 +324,15 @@ private:
         while (m_numBuckets > 0) {
             --m_numBuckets;
             free(m_bucketDataPtrs[m_numBuckets]);
+            free(m_counters[m_numBuckets]);
         }
     }
 
     T* m_bucketDataPtrs[MaxSize / BucketSize];
+    short *m_counters[MaxSize / BucketSize];
     QVector<int> m_freeList;
-    int m_numBuckets;
-    int m_numConstructed;
+    int m_numBuckets = 0;
+    int m_numConstructed = 0;
 
     void performCleanup(T *r, Int2Type<true>)
     {
@@ -258,172 +344,162 @@ private:
 
 };
 
-template <typename T, uint INDEXBITS>
-class ArrayPreallocationPolicy
-{
-public:
-    ArrayPreallocationPolicy()
-    {
-        reset();
-    }
+#ifndef QT_NO_DEBUG_STREAM
+template <typename ValueType, typename KeyType, uint INDEXBITS,
+          template <class> class LockingPolicy
+          >
+class QResourceManager;
 
-    T* allocateResource()
-    {
-        Q_ASSERT(!m_freeList.isEmpty());
-        int idx = m_freeList.last();
-        m_freeList.pop_back();
-        return m_bucket.data() + idx;
-    }
+template <typename ValueType, typename KeyType, uint INDEXBITS = 16,
+          template <class> class LockingPolicy = NonLockingPolicy
+          >
+QDebug operator<<(QDebug dbg, const QResourceManager<ValueType, KeyType, INDEXBITS, LockingPolicy> &manager);
+#endif
 
-    void releaseResource(T *r)
-    {
-        Q_ASSERT(m_bucket.data() <= r && r < m_bucket.data() + MaxSize);
-        int idx = r - m_bucket.data();
-        m_freeList.append(idx);
-        performCleanup(r, Int2Type<QResourceInfo<T>::needsCleanup>());
-        *r = T();
-    }
-
-    void reset()
-    {
-        m_bucket.clear();
-        m_bucket.resize(MaxSize);
-        m_freeList.resize(MaxSize);
-        for (int i = 0; i < MaxSize; i++)
-            m_freeList[i] = MaxSize - (i + 1);
-    }
-
-private:
-    enum {
-      MaxSize = 1 << INDEXBITS
-    };
-
-    QVector<T> m_bucket;
-    QVector<int> m_freeList;
-
-    void performCleanup(T *r, Int2Type<true>)
-    {
-        r->cleanup();
-    }
-
-    void performCleanup(T *, Int2Type<false>)
-    {}
-
-};
-
-template <typename T, typename C, uint INDEXBITS = 16,
-          template <typename, uint> class AllocatingPolicy = ArrayAllocatingPolicy,
+template <typename ValueType, typename KeyType, uint INDEXBITS = 16,
           template <class> class LockingPolicy = NonLockingPolicy
           >
 class QResourceManager
-        : public AllocatingPolicy<T, INDEXBITS>
-        , public LockingPolicy< QResourceManager<T, C, INDEXBITS, AllocatingPolicy, LockingPolicy> >
+        : public ArrayAllocatingPolicy<ValueType, INDEXBITS>
+        , public LockingPolicy< QResourceManager<ValueType, KeyType, INDEXBITS, LockingPolicy> >
 {
 public:
+    typedef ArrayAllocatingPolicy<ValueType, INDEXBITS> Allocator;
+    typedef QHandle<ValueType, INDEXBITS> Handle;
+
     QResourceManager() :
-        AllocatingPolicy<T, INDEXBITS>(),
-        m_maxResourcesEntries((1 << INDEXBITS) - 1)
+        Allocator(),
+        m_maxSize((1 << INDEXBITS) - 1)
     {
     }
 
     ~QResourceManager()
     {}
 
-    QHandle<T, INDEXBITS> acquire()
+    Handle acquire()
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        QHandle<T, INDEXBITS> handle = m_handleManager.acquire(AllocatingPolicy<T, INDEXBITS>::allocateResource());
+        typename LockingPolicy<QResourceManager>::WriteLocker lock(this);
+        Handle handle = Allocator::allocateResource();
+        m_activeHandles.push_back(handle);
         return handle;
     }
 
-    T* data(const QHandle<T, INDEXBITS> &handle)
+    ValueType* data(const Handle &handle)
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        T* d = m_handleManager.data(handle);
-        return d;
+        typename LockingPolicy<QResourceManager>::ReadLocker lock(this);
+        return Allocator::data(handle);
     }
 
-    void release(const QHandle<T, INDEXBITS> &handle)
+    void release(const Handle &handle)
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
+        typename LockingPolicy<QResourceManager>::WriteLocker lock(this);
         releaseLocked(handle);
     }
 
-    void reset()
+    bool contains(const KeyType &id) const
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        m_handleManager.reset();
-        AllocatingPolicy<T, INDEXBITS>::reset();
+        typename LockingPolicy<QResourceManager>::ReadLocker lock(this);
+        return m_keyToHandleMap.contains(id);
     }
 
-    bool contains(const C &id) const
+    Handle getOrAcquireHandle(const KeyType &id)
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        return m_handleToResourceMapper.contains(id);
-    }
-
-    QHandle<T, INDEXBITS> getOrAcquireHandle(const C &id)
-    {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        QHandle<T, INDEXBITS> &handle = m_handleToResourceMapper[id];
-        if (handle.isNull())
-            handle = m_handleManager.acquire(AllocatingPolicy<T, INDEXBITS>::allocateResource());
+        typename LockingPolicy<QResourceManager>::ReadLocker lock(this);
+        Handle handle = m_keyToHandleMap.value(id);
+        if (handle.isNull()) {
+            lock.unlock();
+            typename LockingPolicy<QResourceManager>::WriteLocker writeLock(this);
+            // Test that the handle hasn't been set (in the meantime between the read unlock and the write lock)
+            Handle &handleToSet = m_keyToHandleMap[id];
+            if (handleToSet.isNull()) {
+                handleToSet = Allocator::allocateResource();
+                m_activeHandles.push_back(handleToSet);
+            }
+            return handleToSet;
+        }
         return handle;
     }
 
-    QHandle<T, INDEXBITS> lookupHandle(const C &id)
+    Handle lookupHandle(const KeyType &id)
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        return m_handleToResourceMapper.value(id);
+        typename LockingPolicy<QResourceManager>::ReadLocker lock(this);
+        return m_keyToHandleMap.value(id);
     }
 
-    T *lookupResource(const C &id)
+    ValueType *lookupResource(const KeyType &id)
     {
-        T* ret = Q_NULLPTR;
+        ValueType* ret = nullptr;
         {
-            typename LockingPolicy<QResourceManager>::Locker lock(this);
-            QHandle<T, INDEXBITS> handle = m_handleToResourceMapper.value(id);
+            typename LockingPolicy<QResourceManager>::ReadLocker lock(this);
+            Handle handle = m_keyToHandleMap.value(id);
             if (!handle.isNull())
-                ret = m_handleManager.data(handle);
+                ret = Allocator::data(handle);
         }
         return ret;
     }
 
-    T *getOrCreateResource(const C &id)
+    ValueType *getOrCreateResource(const KeyType &id)
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        QHandle<T, INDEXBITS> &handle = m_handleToResourceMapper[id];
-        if (handle.isNull())
-            handle = m_handleManager.acquire(AllocatingPolicy<T, INDEXBITS>::allocateResource());
-        return m_handleManager.data(handle);
+        const Handle handle = getOrAcquireHandle(id);
+        typename LockingPolicy<QResourceManager>::ReadLocker lock(this);
+        return Allocator::data(handle);
     }
 
-    void releaseResource(const C &id)
+    void releaseResource(const KeyType &id)
     {
-        typename LockingPolicy<QResourceManager>::Locker lock(this);
-        QHandle<T, INDEXBITS> handle = m_handleToResourceMapper.take(id);
+        typename LockingPolicy<QResourceManager>::WriteLocker lock(this);
+        Handle handle = m_keyToHandleMap.take(id);
         if (!handle.isNull())
             releaseLocked(handle);
     }
 
-    int maxResourcesEntries() const { return m_maxResourcesEntries; }
+    int maximumSize() const { return m_maxSize; }
+
+    int count() const Q_DECL_NOEXCEPT { return m_activeHandles.size(); }
+
+    inline QVector<Handle > activeHandles() const Q_DECL_NOEXCEPT { return m_activeHandles; }
 
 protected:
-    QHandleManager<T, INDEXBITS> m_handleManager;
-    QHash<C, QHandle<T, INDEXBITS> > m_handleToResourceMapper;
-    int m_maxResourcesEntries;
+    QHash<KeyType, Handle > m_keyToHandleMap;
+    QVector<Handle > m_activeHandles;
+    const int m_maxSize;
 
 private:
-    void releaseLocked(const QHandle<T, INDEXBITS> &handle)
+    void releaseLocked(const Handle &handle)
     {
-        T *val = m_handleManager.data(handle);
-        m_handleManager.release(handle);
-        AllocatingPolicy<T, INDEXBITS>::releaseResource(val);
+        m_activeHandles.removeOne(handle);
+        Allocator::releaseResource(handle);
     }
+
+    friend QDebug operator<< <>(QDebug dbg, const QResourceManager<ValueType, KeyType, INDEXBITS, LockingPolicy> &manager);
 };
+
+#ifndef QT_NO_DEBUG_STREAM
+template <typename ValueType, typename KeyType, uint INDEXBITS,
+          template <class> class LockingPolicy
+          >
+QDebug operator<<(QDebug dbg, const QResourceManager<ValueType, KeyType, INDEXBITS, LockingPolicy> &manager)
+{
+    QDebugStateSaver saver(dbg);
+    dbg << "Contains" << manager.count() << "items" << "of a maximum" << manager.maximumSize() << endl;
+
+    dbg << "Key to Handle Map:" << endl;
+    const auto end = manager.m_keyToHandleMap.cend();
+    for (auto it = manager.m_keyToHandleMap.cbegin(); it != end; ++it)
+        dbg << "QNodeId =" << it.key() << "Handle =" << it.value() << endl;
+
+//    dbg << "Resources:" << endl;
+//    dbg << manager.m_handleManager;
+    return dbg;
+}
+#endif
 
 }// Qt3D
 
 QT_END_NAMESPACE
+
+#if defined(Q_CC_MSVC)
+#pragma warning(default : 4189)
+#endif
 
 #endif // QT3DCORE_QABSTRACTRESOURCESMANAGER_H

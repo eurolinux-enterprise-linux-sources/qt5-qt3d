@@ -2,11 +2,20 @@
     error( "Couldn't find the examples.pri file!" )
 }
 
-QT += qml quick
-CONFIG += resources_big
+QT += qml quick \
+    concurrent \
+    3dcore 3drender 3dinput \
+    3dquick 3dquickrender 3dquickinput 3dquickextras \
+    network
+
+CONFIG += resources_big c++11
+
+HEADERS += \
+    networkcontroller.h
 
 SOURCES += \
-    main.cpp
+    main.cpp \
+    networkcontroller.cpp
 
 OTHER_FILES += \
     *.qml \
@@ -22,6 +31,7 @@ RESOURCES += \
 
 DISTFILES += \
     PlanetsMain.qml \
-    android/AndroidManifest.xml
+    android/AndroidManifest.xml \
+    images/license.txt
 
 ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android

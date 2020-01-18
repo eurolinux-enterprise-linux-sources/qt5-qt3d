@@ -1,4 +1,5 @@
 %{Cpp:LicenseTemplate}\
+
 #ifndef %{PRIVATEGUARD}
 #define %{PRIVATEGUARD}
 
@@ -19,8 +20,6 @@
 #include <Qt3DCore/private/qcomponent_p.h>
 @elsif '%{Base}' === 'QEntity'
 #include <Qt3DCore/private/qentity_p.h>
-@elsif '%{Base}' === 'QBackendNode'
-#include <Qt3DCore/private/qbackendnode_p.h>
 @endif
 
 QT_BEGIN_NAMESPACE
@@ -30,8 +29,17 @@ class %{CN}Private : public Qt3DCore::%{Base}Private
 public:
     %{CN}Private();
 
+    Q_DECLARE_PUBLIC(%{CN})
 
+    // TODO Add member variables
 };
+@if '%{Base}' === 'QNode' || '%{Base}' === 'QComponent'
+
+struct %{CN}Data
+{
+    // TODO: Add members that should be sent to the backend
+};
+@endif
 %{JS: Cpp.closeNamespaces('%{Class}')}
 
 QT_END_NAMESPACE

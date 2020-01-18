@@ -1,42 +1,44 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2015 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "quick3drenderpass_p.h"
-#include <Qt3DRender/qparametermapping.h>
+#include <Qt3DQuickRender/private/quick3drenderpass_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -49,22 +51,13 @@ Quick3DRenderPass::Quick3DRenderPass(QObject *parent)
 {
 }
 
-QQmlListProperty<QAnnotation> Quick3DRenderPass::annotationList()
+QQmlListProperty<QFilterKey> Quick3DRenderPass::filterKeyList()
 {
-    return QQmlListProperty<QAnnotation>(this, 0,
-                                         &Quick3DRenderPass::appendAnnotation,
-                                         &Quick3DRenderPass::annotationsCount,
-                                         &Quick3DRenderPass::annotationAt,
-                                         &Quick3DRenderPass::clearAnnotations);
-}
-
-QQmlListProperty<QParameterMapping> Quick3DRenderPass::bindingList()
-{
-    return QQmlListProperty<QParameterMapping>(this, 0,
-                                               &Quick3DRenderPass::appendBinding,
-                                               &Quick3DRenderPass::bindingsCount,
-                                               &Quick3DRenderPass::bindingAt,
-                                               &Quick3DRenderPass::clearBindings);
+    return QQmlListProperty<QFilterKey>(this, 0,
+                                         &Quick3DRenderPass::appendFilterKey,
+                                         &Quick3DRenderPass::filterKeysCount,
+                                         &Quick3DRenderPass::filterKeyAt,
+                                         &Quick3DRenderPass::clearFilterKey);
 }
 
 QQmlListProperty<QRenderState> Quick3DRenderPass::renderStateList()
@@ -85,54 +78,30 @@ QQmlListProperty<QParameter> Quick3DRenderPass::parameterList()
                                         &Quick3DRenderPass::clearParameterList);
 }
 
-void Quick3DRenderPass::appendAnnotation(QQmlListProperty<QAnnotation> *list, QAnnotation *annotation)
+void Quick3DRenderPass::appendFilterKey(QQmlListProperty<QFilterKey> *list, QFilterKey *filterKey)
 {
     Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    rPass->parentRenderPass()->addAnnotation(annotation);
+    rPass->parentRenderPass()->addFilterKey(filterKey);
 }
 
-QAnnotation *Quick3DRenderPass::annotationAt(QQmlListProperty<QAnnotation> *list, int index)
+QFilterKey *Quick3DRenderPass::filterKeyAt(QQmlListProperty<QFilterKey> *list, int index)
 {
     Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    return rPass->parentRenderPass()->annotations().at(index);
+    return rPass->parentRenderPass()->filterKeys().at(index);
 }
 
-int Quick3DRenderPass::annotationsCount(QQmlListProperty<QAnnotation> *list)
+int Quick3DRenderPass::filterKeysCount(QQmlListProperty<QFilterKey> *list)
 {
     Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    return rPass->parentRenderPass()->annotations().count();
+    return rPass->parentRenderPass()->filterKeys().count();
 }
 
-void Quick3DRenderPass::clearAnnotations(QQmlListProperty<QAnnotation> *list)
+void Quick3DRenderPass::clearFilterKey(QQmlListProperty<QFilterKey> *list)
 {
     Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    Q_FOREACH (QAnnotation *c, rPass->parentRenderPass()->annotations())
-        rPass->parentRenderPass()->removeAnnotation(c);
-}
-
-void Quick3DRenderPass::appendBinding(QQmlListProperty<QParameterMapping> *list, QParameterMapping *binding)
-{
-    Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    rPass->parentRenderPass()->addBinding(binding);
-}
-
-QParameterMapping *Quick3DRenderPass::bindingAt(QQmlListProperty<QParameterMapping> *list, int index)
-{
-    Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    return rPass->parentRenderPass()->bindings().at(index);
-}
-
-int Quick3DRenderPass::bindingsCount(QQmlListProperty<QParameterMapping> *list)
-{
-    Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    return rPass->parentRenderPass()->bindings().count();
-}
-
-void Quick3DRenderPass::clearBindings(QQmlListProperty<QParameterMapping> *list)
-{
-    Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    Q_FOREACH (QParameterMapping *binding, rPass->parentRenderPass()->bindings())
-        rPass->parentRenderPass()->removeBinding(binding);
+    const auto keys = rPass->parentRenderPass()->filterKeys();
+    for (QFilterKey *c : keys)
+        rPass->parentRenderPass()->removeFilterKey(c);
 }
 
 void Quick3DRenderPass::appendRenderState(QQmlListProperty<QRenderState> *list, QRenderState *state)
@@ -156,7 +125,8 @@ int Quick3DRenderPass::renderStateCount(QQmlListProperty<QRenderState> *list)
 void Quick3DRenderPass::clearRenderStates(QQmlListProperty<QRenderState> *list)
 {
     Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    Q_FOREACH (QRenderState *s, rPass->parentRenderPass()->renderStates())
+    const auto states = rPass->parentRenderPass()->renderStates();
+    for (QRenderState *s : states)
         rPass->parentRenderPass()->removeRenderState(s);
 }
 
@@ -181,7 +151,8 @@ int Quick3DRenderPass::parametersCount(QQmlListProperty<QParameter> *list)
 void Quick3DRenderPass::clearParameterList(QQmlListProperty<QParameter> *list)
 {
     Quick3DRenderPass *rPass = qobject_cast<Quick3DRenderPass *>(list->object);
-    Q_FOREACH (QParameter *p, rPass->parentRenderPass()->parameters())
+    const auto parameters = rPass->parentRenderPass()->parameters();
+    for (QParameter *p : parameters)
         rPass->parentRenderPass()->removeParameter(p);
 }
 

@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -50,7 +53,7 @@
 
 #include <Qt3DRender/private/qt3drender_global_p.h>
 #include <Qt3DCore/qnodeid.h>
-#include <Qt3DRender/private/qboundingsphere_p.h>
+#include <Qt3DRender/private/boundingsphere_p.h>
 
 #include <QMatrix4x4>
 #include <QVector3D>
@@ -61,35 +64,35 @@ namespace Qt3DRender {
 
 namespace Render {
 
-class QT3DRENDERSHARED_PRIVATE_EXPORT Sphere : public QBoundingSphere
+class QT3DRENDERSHARED_PRIVATE_EXPORT Sphere : public RayCasting::BoundingSphere
 {
 public:
-    inline Sphere(const Qt3DCore::QNodeId &i = Qt3DCore::QNodeId())
+    inline Sphere(Qt3DCore::QNodeId i = Qt3DCore::QNodeId())
         : m_center()
         , m_radius(0.0f)
         , m_id(i)
     {}
 
-    inline Sphere(const QVector3D &c, float r, const Qt3DCore::QNodeId &i = Qt3DCore::QNodeId())
+    inline Sphere(const QVector3D &c, float r, Qt3DCore::QNodeId i = Qt3DCore::QNodeId())
         : m_center(c)
         , m_radius(r)
         , m_id(i)
     {}
 
     void setCenter(const QVector3D &c);
-    QVector3D center() const;
+    QVector3D center() const Q_DECL_OVERRIDE;
 
     inline bool isNull() { return m_center == QVector3D() && m_radius == 0.0f; }
 
     void setRadius(float r);
-    float radius() const;
+    float radius() const Q_DECL_OVERRIDE;
 
     void clear();
     void initializeFromPoints(const QVector<QVector3D> &points);
     void expandToContain(const QVector3D &point);
     inline void expandToContain(const QVector<QVector3D> &points)
     {
-        Q_FOREACH (const QVector3D &p, points)
+        for (const QVector3D &p : points)
             expandToContain(p);
     }
 
@@ -103,7 +106,7 @@ public:
     }
 
     Qt3DCore::QNodeId id() const Q_DECL_FINAL;
-    bool intersects(const Qt3DCore::QRay3D &ray, QVector3D *q) const Q_DECL_FINAL;
+    bool intersects(const RayCasting::QRay3D &ray, QVector3D *q, QVector3D *uvw = nullptr) const Q_DECL_FINAL;
     Type type() const Q_DECL_FINAL;
 
     static Sphere fromPoints(const QVector<QVector3D> &points);
@@ -160,6 +163,6 @@ inline bool intersects(const Sphere &a, const Sphere &b)
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(Qt3DRender::Render::Sphere)
+Q_DECLARE_METATYPE(Qt3DRender::Render::Sphere) // LCOV_EXCL_LINE
 
 #endif // QT3DRENDER_RENDER_SPHERE_H

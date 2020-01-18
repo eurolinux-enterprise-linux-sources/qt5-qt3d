@@ -1,34 +1,48 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:BSD$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** BSD License Usage
+** Alternatively, you may use this file under the terms of the BSD license
+** as follows:
 **
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** "Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions are
+** met:
+**   * Redistributions of source code must retain the above copyright
+**     notice, this list of conditions and the following disclaimer.
+**   * Redistributions in binary form must reproduce the above copyright
+**     notice, this list of conditions and the following disclaimer in
+**     the documentation and/or other materials provided with the
+**     distribution.
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
+**     from this software without specific prior written permission.
+**
+**
+** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 **
 ** $QT_END_LICENSE$
 **
@@ -36,58 +50,43 @@
 
 #include <QGuiApplication>
 
-#include <window.h>
 #include <Qt3DCore/QEntity>
 #include <Qt3DCore/QAspectEngine>
-#include <Qt3DCore/QCamera>
+#include <Qt3DRender/QCamera>
 
 #include <Qt3DInput/QInputAspect>
 
 #include <Qt3DRender/QRenderAspect>
-#include <Qt3DRender/QPhongMaterial>
-#include <Qt3DRender/QDiffuseMapMaterial>
-#include <Qt3DRender/QForwardRenderer>
-#include <Qt3DRender/QFrameGraph>
+#include <Qt3DExtras/QPhongMaterial>
+#include <Qt3DExtras/QDiffuseMapMaterial>
+#include <Qt3DExtras/QForwardRenderer>
 #include <Qt3DRender/QTextureImage>
 
 #include "planeentity.h"
 #include "rotatingtrefoilknot.h"
 #include "barrel.h"
 #include "houseplant.h"
+#include <Qt3DExtras/qt3dwindow.h>
+#include <Qt3DExtras/qfirstpersoncameracontroller.h>
 
 int main(int argc, char* argv[])
 {
     QGuiApplication app(argc, argv);
 
-    Window view;
-    Qt3DCore::QAspectEngine engine;
-    engine.registerAspect(new Qt3DRender::QRenderAspect());
-    Qt3DInput::QInputAspect *input = new Qt3DInput::QInputAspect;
-    engine.registerAspect(input);
-    QVariantMap data;
-    data.insert(QStringLiteral("surface"), QVariant::fromValue(static_cast<QSurface *>(&view)));
-    data.insert(QStringLiteral("eventSource"), QVariant::fromValue(&view));
-    engine.setData(data);
+    Qt3DExtras::Qt3DWindow view;
 
     // Scene Root
     Qt3DCore::QEntity *sceneRoot = new Qt3DCore::QEntity();
 
     // Scene Camera
-    Qt3DCore::QCamera *basicCamera = new Qt3DCore::QCamera(sceneRoot);
-    basicCamera->setProjectionType(Qt3DCore::QCameraLens::PerspectiveProjection);
-    basicCamera->setAspectRatio(view.width() / view.height());
+    Qt3DRender::QCamera *basicCamera = view.camera();
+    basicCamera->setProjectionType(Qt3DRender::QCameraLens::PerspectiveProjection);
     basicCamera->setUpVector(QVector3D(0.0f, 1.0f, 0.0f));
     basicCamera->setViewCenter(QVector3D(0.0f, 3.5f, 0.0f));
     basicCamera->setPosition(QVector3D(0.0f, 3.5f, 25.0f));
     // For camera controls
-    input->setCamera(basicCamera);
-
-    // Forward Renderer FrameGraph
-    Qt3DRender::QFrameGraph *frameGraphComponent = new Qt3DRender::QFrameGraph(sceneRoot);
-    Qt3DRender::QForwardRenderer *forwardRenderer = new Qt3DRender::QForwardRenderer();
-    forwardRenderer->setCamera(basicCamera);
-    frameGraphComponent->setActiveFrameGraph(forwardRenderer);
-    sceneRoot->addComponent(frameGraphComponent);
+    Qt3DExtras::QFirstPersonCameraController *camController = new Qt3DExtras::QFirstPersonCameraController(sceneRoot);
+    camController->setCamera(basicCamera);
 
     // Scene floor
     PlaneEntity *planeEntity = new PlaneEntity(sceneRoot);
@@ -95,7 +94,7 @@ int main(int argc, char* argv[])
     planeEntity->mesh()->setWidth(100.0f);
     planeEntity->mesh()->setMeshResolution(QSize(20, 20));
 
-    Qt3DRender::QNormalDiffuseSpecularMapMaterial *normalDiffuseSpecularMapMaterial = new Qt3DRender::QNormalDiffuseSpecularMapMaterial();
+    Qt3DExtras::QNormalDiffuseSpecularMapMaterial *normalDiffuseSpecularMapMaterial = new Qt3DExtras::QNormalDiffuseSpecularMapMaterial();
     normalDiffuseSpecularMapMaterial->setTextureScale(10.0f);
     normalDiffuseSpecularMapMaterial->setShininess(80.0f);
     normalDiffuseSpecularMapMaterial->setAmbient(QColor::fromRgbF(0.2f, 0.2f, 0.2f, 1.0f));
@@ -118,7 +117,7 @@ int main(int argc, char* argv[])
     RenderableEntity *chest = new RenderableEntity(sceneRoot);
     chest->transform()->setScale(0.03f);
     chest->mesh()->setSource(QUrl(QStringLiteral("qrc:/assets/chest/Chest.obj")));
-    Qt3DRender::QDiffuseMapMaterial *diffuseMapMaterial = new Qt3DRender::QDiffuseMapMaterial();
+    Qt3DExtras::QDiffuseMapMaterial *diffuseMapMaterial = new Qt3DExtras::QDiffuseMapMaterial();
     diffuseMapMaterial->setSpecular(QColor::fromRgbF(0.2f, 0.2f, 0.2f, 1.0f));
     diffuseMapMaterial->setShininess(2.0f);
 
@@ -133,7 +132,7 @@ int main(int argc, char* argv[])
     RotatingTrefoilKnot *trefoil = new RotatingTrefoilKnot(sceneRoot);
     trefoil->setPosition(QVector3D(0.0f, 3.5f, 0.0f));
     trefoil->setScale(0.5f);
-    Qt3DRender::QPhongMaterial *phongMaterial = new Qt3DRender::QPhongMaterial();
+    Qt3DExtras::QPhongMaterial *phongMaterial = new Qt3DExtras::QPhongMaterial();
     phongMaterial->setDiffuse(QColor(204, 205, 75)); // Safari Yellow #cccd4b
     phongMaterial->setSpecular(Qt::white);
     trefoil->addComponent(phongMaterial);
@@ -194,7 +193,7 @@ int main(int argc, char* argv[])
     crossShrub->setPosition(QVector3D(0.0f, 0.0f, 8.0f));
     crossShrub->setScale(0.05f);
 
-    engine.setRootEntity(sceneRoot);
+    view.setRootEntity(sceneRoot);
     view.show();
 
     return app.exec();

@@ -1,70 +1,71 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qpostman_p.h"
-#include <private/qobject_p.h>
-#include <Qt3DCore/qscenepropertychange.h>
-#include <Qt3DCore/qbackendscenepropertychange.h>
-#include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/private/qlockableobserverinterface_p.h>
+#include "qpostman_p_p.h"
+
 #include <Qt3DCore/qnode.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+
+#include <Qt3DCore/private/qlockableobserverinterface_p.h>
 #include <Qt3DCore/private/qnode_p.h>
+#include <Qt3DCore/private/qpropertyupdatedchangebase_p.h>
+#include <Qt3DCore/private/qscene_p.h>
+#include <QtCore/private/qobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DCore {
 
-class QPostmanPrivate : public QObjectPrivate
+QPostmanPrivate *QPostmanPrivate::get(QPostman *q)
 {
-public:
-    QPostmanPrivate()
-        : QObjectPrivate()
-        , m_scene(Q_NULLPTR)
-    {
-    }
-
-    Q_DECLARE_PUBLIC(QPostman)
-    QScene *m_scene;
-    std::vector<QSceneChangePtr> m_batch;
-};
+    return q->d_func();
+}
 
 QPostman::QPostman(QObject *parent)
     : QObject(*new QPostmanPrivate, parent)
 {
     qRegisterMetaType<QSceneChangePtr >("QSceneChangePtr");
+}
+
+QPostman::~QPostman()
+{
 }
 
 void QPostman::setScene(QScene *scene)
@@ -112,22 +113,55 @@ void QPostman::notifyBackend(const QSceneChangePtr &change)
     d->m_batch.push_back(change);
 }
 
+// AspectThread
+bool QPostman::shouldNotifyFrontend(const QSceneChangePtr &e)
+{
+    Q_D(QPostman);
+    const QPropertyUpdatedChangePtr propertyChange = qSharedPointerDynamicCast<QPropertyUpdatedChange>(e);
+    if (Q_LIKELY(d->m_scene != nullptr) && !propertyChange.isNull()) {
+        const QScene::NodePropertyTrackData propertyTrackData
+                = d->m_scene->lookupNodePropertyTrackData(e->subjectId());
+
+        const QNode::PropertyTrackingMode trackMode = propertyTrackData.trackedPropertiesOverrides.value(QLatin1String(propertyChange->propertyName()),
+                                                                                                      propertyTrackData.defaultTrackMode);
+
+        switch (trackMode) {
+        case QNode::TrackAllValues:
+            return true;
+
+        case QNode::DontTrackValues:
+            return false;
+
+        case QNode::TrackFinalValues: {
+            const bool isIntermediate
+                = QPropertyUpdatedChangeBasePrivate::get(propertyChange.data())->m_isIntermediate;
+            return !isIntermediate;
+        }
+
+        default:
+            Q_UNREACHABLE();
+            return false;
+        }
+    }
+    return true;
+}
+
+// Main Thread
 void QPostman::notifyFrontendNode(const QSceneChangePtr &e)
 {
     Q_D(QPostman);
-    QBackendScenePropertyChangePtr change = qSharedPointerCast<QBackendScenePropertyChange>(e);
-    if (!change.isNull() && d->m_scene != Q_NULLPTR) {
-        QNode *n = d->m_scene->lookupNode(change->targetNode());
-        if (n != Q_NULLPTR)
-            n->sceneChangeEvent(change);
+    if (!e.isNull() && d->m_scene != nullptr) {
+        QNode *n = d->m_scene->lookupNode(e->subjectId());
+        if (n != nullptr)
+            n->sceneChangeEvent(e);
     }
 }
 
 void QPostman::submitChangeBatch()
 {
     Q_D(QPostman);
-    QLockableObserverInterface *arbiter = Q_NULLPTR;
-    if (d->m_scene && (arbiter = d->m_scene->arbiter()) != Q_NULLPTR) {
+    QLockableObserverInterface *arbiter = nullptr;
+    if (d->m_scene && (arbiter = d->m_scene->arbiter()) != nullptr) {
         arbiter->sceneChangeEventWithLock(d->m_batch);
         d->m_batch.clear();
     }

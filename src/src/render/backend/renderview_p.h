@@ -1,35 +1,38 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2015 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -50,12 +53,15 @@
 //
 
 #include <Qt3DRender/qparameter.h>
-#include <Qt3DRender/qclearbuffer.h>
+#include <Qt3DRender/qclearbuffers.h>
 #include <Qt3DRender/private/renderer_p.h>
+#include <Qt3DRender/private/clearbuffers_p.h>
 #include <Qt3DRender/private/cameralens_p.h>
 #include <Qt3DRender/private/attachmentpack_p.h>
 #include <Qt3DRender/private/handle_types_p.h>
-#include <Qt3DRender/qparameter.h>
+#include <Qt3DRender/private/qsortpolicy_p.h>
+#include <Qt3DRender/private/lightsource_p.h>
+#include <Qt3DRender/private/qmemorybarrier_p.h>
 
 #include <Qt3DCore/private/qframeallocator_p.h>
 
@@ -63,6 +69,7 @@
 #include <Qt3DRender/private/renderviewjobutils_p.h>
 
 #include <QVector>
+#include <QSurface>
 #include <QMutex>
 #include <QColor>
 
@@ -99,6 +106,13 @@ struct Q_AUTOTEST_EXPORT Plane
     const float d;
 };
 
+struct Q_AUTOTEST_EXPORT ClearBufferInfo
+{
+    int drawBufferIndex = 0;
+    QRenderTargetOutput::AttachmentPoint attchmentPoint = QRenderTargetOutput::Color0;
+    QVector4D clearColor;
+};
+
 // This class is kind of analogous to RenderBin but I want to avoid trampling
 // on that until we get this working
 
@@ -108,210 +122,223 @@ public:
     RenderView();
     ~RenderView();
 
-    static void operator delete(void *ptr);
-    static void operator delete(void *ptr, void *);
-
     // TODO: Add a way to specify a sort predicate for the RenderCommands
     void sort();
 
     void setRenderer(Renderer *renderer);
-    inline void setSurfaceSize(const QSize &size) { m_surfaceSize = size; }
-    inline Renderer *renderer() const { return m_renderer; }
-    inline NodeManagers *nodeManagers() const { return m_manager; }
+    inline void setSurfaceSize(const QSize &size) Q_DECL_NOTHROW { m_surfaceSize = size; }
+    inline Renderer *renderer() const Q_DECL_NOTHROW { return m_renderer; }
+    inline NodeManagers *nodeManagers() const Q_DECL_NOTHROW { return m_manager; }
+    inline const QSize &surfaceSize() const Q_DECL_NOTHROW { return m_surfaceSize; }
+    inline void setDevicePixelRatio(qreal r) Q_DECL_NOTHROW { m_devicePixelRatio = r; }
+    inline qreal devicePixelRatio() const Q_DECL_NOTHROW { return m_devicePixelRatio; }
 
-    inline void setAllocator(Qt3DCore::QFrameAllocator *allocator)
-    {
-        m_allocator = allocator;
-        m_data = m_allocator->allocate<InnerData>();
-        // If we have a viewMatrix pointer instead of directly a QMatrix4x4 object in RenderView
-        // This allows us to keep the size of RenderView smaller and avoid huge block fragmentation
-        //
-        // TODO: Is this worth it here. We don't have that many RenderViews to iterate over. This
-        // level of memory management would be better in Entity's matrices as they will
-        // help cache performance during iteration
-        m_data->m_viewMatrix = m_allocator->allocate<QMatrix4x4>();
-        m_data->m_viewProjectionMatrix = m_allocator->allocate<QMatrix4x4>();
-    }
-    inline Qt3DCore::QFrameAllocator *allocator() const { return m_allocator; }
+    inline void setRenderCameraLens(CameraLens *renderCameraLens) Q_DECL_NOTHROW { m_data.m_renderCameraLens = renderCameraLens; }
+    inline CameraLens *renderCameraLens() const Q_DECL_NOTHROW { return m_data.m_renderCameraLens; }
 
-    inline void setRenderCamera(CameraLens *renderCamera) { m_data->m_renderCamera = renderCamera; }
-    inline CameraLens *renderCamera() const { return m_data->m_renderCamera; }
+    inline void setRenderCameraEntity(Entity *renderCameraNode) Q_DECL_NOTHROW { m_data.m_renderCameraNode = renderCameraNode; }
+    inline Entity *renderCameraEntity() const Q_DECL_NOTHROW { return m_data.m_renderCameraNode; }
 
-    inline void setViewMatrix(const QMatrix4x4 &viewMatrix) { *(m_data->m_viewMatrix) = viewMatrix; }
-    inline QMatrix4x4 viewmatrix() const { Q_ASSERT(m_data->m_viewMatrix); return *(m_data->m_viewMatrix); }
+    inline void setViewMatrix(const QMatrix4x4 &viewMatrix) Q_DECL_NOTHROW { m_data.m_viewMatrix = viewMatrix; }
+    inline QMatrix4x4 viewMatrix() const Q_DECL_NOTHROW { return m_data.m_viewMatrix; }
 
-    inline void setViewProjectionMatrix(const QMatrix4x4 &viewProjectionMatrix) { *(m_data->m_viewProjectionMatrix) = viewProjectionMatrix; }
-    inline QMatrix4x4 viewProjectionMatrix() const { return *(m_data->m_viewProjectionMatrix); }
+    inline void setViewProjectionMatrix(const QMatrix4x4 &viewProjectionMatrix) Q_DECL_NOTHROW { m_data.m_viewProjectionMatrix = viewProjectionMatrix; }
+    inline QMatrix4x4 viewProjectionMatrix() const Q_DECL_NOTHROW { return m_data.m_viewProjectionMatrix; }
 
-    inline void setEyePosition(const QVector3D &eyePos) { m_data->m_eyePos = eyePos; }
-    inline QVector3D eyePosition() const { return m_data->m_eyePos; }
+    inline void setEyePosition(const QVector3D &eyePos) Q_DECL_NOTHROW { m_data.m_eyePos = eyePos; }
+    inline QVector3D eyePosition() const Q_DECL_NOTHROW { return m_data.m_eyePos; }
 
-    inline void appendLayerFilter(const QStringList &layers) { m_data->m_layers << layers; }
-    inline QStringList layerFilters() const { return m_data->m_layers; }
+    inline void setHasLayerFilter(bool filter) Q_DECL_NOTHROW { m_data.m_hasLayerFilter = filter; }
+    inline bool hasLayerFilter() const Q_DECL_NOTHROW { return m_data.m_hasLayerFilter; }
+    inline void appendLayerFilter(const Qt3DCore::QNodeIdVector &layerIds) Q_DECL_NOTHROW { m_data.m_layerIds << layerIds; }
+    inline Qt3DCore::QNodeIdVector layerFilter() const Q_DECL_NOTHROW { return m_data.m_layerIds; }
 
-    inline void setRenderPassFilter(const RenderPassFilter *rpFilter) { m_data->m_passFilter = rpFilter; }
-    inline const RenderPassFilter *renderPassFilter() const { return m_data->m_passFilter; }
+    inline void setRenderPassFilter(const RenderPassFilter *rpFilter) Q_DECL_NOTHROW { m_data.m_passFilter = rpFilter; }
+    inline const RenderPassFilter *renderPassFilter() const Q_DECL_NOTHROW { return m_data.m_passFilter; }
 
-    inline void setTechniqueFilter(const TechniqueFilter *filter) { m_data->m_techniqueFilter = filter; }
-    inline const TechniqueFilter *techniqueFilter() const { return m_data->m_techniqueFilter; }
+    inline void setTechniqueFilter(const TechniqueFilter *filter) Q_DECL_NOTHROW { m_data.m_techniqueFilter = filter; }
+    inline const TechniqueFilter *techniqueFilter() const Q_DECL_NOTHROW { return m_data.m_techniqueFilter; }
 
-    inline RenderStateSet *stateSet() const { return m_stateSet; }
-    void setStateSet(RenderStateSet *stateSet) { m_stateSet = stateSet; }
+    inline RenderStateSet *stateSet() const Q_DECL_NOTHROW { return m_stateSet; }
+    void setStateSet(RenderStateSet *stateSet) Q_DECL_NOTHROW { m_stateSet = stateSet; }
 
-    inline bool noDraw() const { return m_noDraw; }
-    void setNoDraw(bool noDraw) { m_noDraw = noDraw; }
+    inline bool noDraw() const Q_DECL_NOTHROW { return m_noDraw; }
+    void setNoDraw(bool noDraw) Q_DECL_NOTHROW { m_noDraw = noDraw; }
 
-    inline bool frustumCulling() const { return m_frustumCulling; }
-    void setFrustumCulling(bool frustumCulling) { m_frustumCulling = frustumCulling; }
+    inline bool isCompute() const Q_DECL_NOTHROW { return m_compute; }
+    void setCompute(bool compute) Q_DECL_NOTHROW { m_compute = compute; }
+
+    void setComputeWorkgroups(int x, int y, int z) Q_DECL_NOTHROW { m_workGroups[0] = x; m_workGroups[1] = y; m_workGroups[2] = z; }
+    const int *computeWorkGroups() const Q_DECL_NOTHROW { return m_workGroups; }
+    inline bool frustumCulling() const Q_DECL_NOTHROW { return m_frustumCulling; }
+    void setFrustumCulling(bool frustumCulling) Q_DECL_NOTHROW { m_frustumCulling = frustumCulling; }
+
+    inline void setMaterialParameterTable(const QHash<Qt3DCore::QNodeId, QVector<RenderPassParameterData>> &parameters) Q_DECL_NOTHROW { m_parameters = parameters; }
 
     // TODO: Get rid of this overly complex memory management by splitting out the
     // InnerData as a RenderViewConfig struct. This can be created by setRenderViewConfigFromFrameGraphLeafNode
     // and passed along with the RenderView to the functions that populate the renderview
-    inline void setViewport(const QRectF &vp)
-    {
-        if (!m_viewport) {
-            Q_ASSERT(m_allocator);
-            m_viewport = m_allocator->allocate<QRectF>();
-            *m_viewport = QRectF(0.0f, 0.0f, 1.0f, 1.0f);
-        }
-        *m_viewport = vp;
-    }
-    inline QRectF viewport() const
-    {
-        if (!m_viewport) {
-            Q_ASSERT(m_allocator);
-            m_viewport = m_allocator->allocate<QRectF>();
-            *m_viewport = QRectF(0.0f, 0.0f, 1.0f, 1.0f);
-        }
-        return *m_viewport;
-    }
+    inline void setViewport(const QRectF &vp) Q_DECL_NOTHROW { m_viewport = vp; }
+    inline QRectF viewport() const Q_DECL_NOTHROW { return m_viewport; }
 
-    inline void setClearColor(const QColor &c)
-    {
-        if (!m_clearColor) {
-            Q_ASSERT(m_allocator);
-            m_clearColor = m_allocator->allocate<QColor>();
-            *m_clearColor = QColor(QColor::Invalid);
-        }
-        *m_clearColor = c;
-    }
-    inline QColor clearColor() const
-    {
-        if (!m_clearColor) {
-            Q_ASSERT(m_allocator);
-            m_clearColor = m_allocator->allocate<QColor>();
-            *m_clearColor = QColor(QColor::Invalid);
-        }
-        return *m_clearColor;
-    }
+    inline float gamma() const Q_DECL_NOTHROW { return m_gamma; }
+    inline void setGamma(float gamma) Q_DECL_NOTHROW { m_gamma = gamma; }
 
-    inline void setClearBuffer(QClearBuffer::BufferType clearBuffer) { m_clearBuffer = clearBuffer; }
-    inline QClearBuffer::BufferType clearBuffer() const { return m_clearBuffer; }
+    // depth and stencil ClearBuffers are cached locally
+    // color ClearBuffers are collected, as there may be multiple
+    // color buffers to be cleared. we need to apply all these at rendering
+    void addClearBuffers(const ClearBuffers *cb);
+    inline QVector<ClearBufferInfo> specificClearColorBufferInfo() const { return m_specificClearColorBuffers; }
+    inline QVector<ClearBufferInfo> &specificClearColorBufferInfo() { return m_specificClearColorBuffers; }
+    inline ClearBufferInfo globalClearColorBufferInfo() const { return m_globalClearColorBuffer; }
 
-    void buildRenderCommands(Entity *preprocessedTreeRoot, const Plane *planes);
-    QVector<RenderCommand *> commands() const { return m_commands; }
-    void gatherLights(Entity *preprocessedTreeRoot);
+    inline QClearBuffers::BufferTypeFlags clearTypes() const { return m_clearBuffer; }
+    inline float clearDepthValue() const { return m_clearDepthValue; }
+    inline int clearStencilValue() const { return m_clearStencilValue; }
 
-    void addRenderAttachment(Attachment attachment) { m_attachmentPack.addAttachment(attachment); }
-    void setDrawBuffers(const QList<QRenderAttachment::RenderAttachmentType> &drawBuffers) { m_attachmentPack.setDrawBuffers(drawBuffers); }
-    const AttachmentPack &attachmentPack() const;
+    RenderPassList passesAndParameters(ParameterInfoList *parameter, Entity *node, bool useDefaultMaterials = true);
 
-    void setRenderTargetHandle(HTarget renderTargetHandle) { m_renderTarget = renderTargetHandle; }
-    HTarget renderTargetHandle() const { return m_renderTarget; }
+    QVector<RenderCommand *> buildDrawRenderCommands(const QVector<Entity *> &entities) const;
+    QVector<RenderCommand *> buildComputeRenderCommands(const QVector<Entity *> &entities) const;
+    void setCommands(QVector<RenderCommand *> &commands) Q_DECL_NOTHROW { m_commands = commands; }
+    QVector<RenderCommand *> commands() const Q_DECL_NOTHROW { return m_commands; }
 
-    void addSortCriteria(const QList<Qt3DCore::QNodeId> &sortMethodUid) { m_data->m_sortingCriteria.append(sortMethodUid); }
+    void setAttachmentPack(const AttachmentPack &pack) { m_attachmentPack = pack; }
+    const AttachmentPack &attachmentPack() const { return m_attachmentPack; }
+
+    void setRenderTargetId(Qt3DCore::QNodeId renderTargetId) Q_DECL_NOTHROW { m_renderTarget = renderTargetId; }
+    Qt3DCore::QNodeId renderTargetId() const Q_DECL_NOTHROW { return m_renderTarget; }
+
+    void addSortType(const QVector<Qt3DRender::QSortPolicy::SortType> &sortTypes) { m_data.m_sortingTypes.append(sortTypes); }
+
+    void setSurface(QSurface *surface) { m_surface = surface; }
+    QSurface *surface() const { return m_surface; }
+
+    void setLightSources(const QVector<LightSource> &lightSources) Q_DECL_NOTHROW { m_lightSources = lightSources; }
+    void setEnvironmentLight(EnvironmentLight *environmentLight) Q_DECL_NOTHROW { m_environmentLight = environmentLight; }
+
+    void updateMatrices();
+
+    inline void setRenderCaptureNodeId(const Qt3DCore::QNodeId nodeId) Q_DECL_NOTHROW { m_renderCaptureNodeId = nodeId; }
+    inline const Qt3DCore::QNodeId renderCaptureNodeId() const Q_DECL_NOTHROW { return m_renderCaptureNodeId; }
+
+    void setMemoryBarrier(QMemoryBarrier::Operations barrier) Q_DECL_NOTHROW { m_memoryBarrier = barrier; }
+    QMemoryBarrier::Operations memoryBarrier() const Q_DECL_NOTHROW { return m_memoryBarrier; }
 
     // Helps making the size of RenderView smaller
     // Contains all the data needed for the actual building of the RenderView
     // But that aren't used later by the Renderer
     struct InnerData {
         InnerData()
-            : m_renderCamera(Q_NULLPTR)
-            , m_techniqueFilter(Q_NULLPTR)
-            , m_passFilter(Q_NULLPTR)
-            , m_viewMatrix(Q_NULLPTR)
+            : m_renderCameraLens(nullptr)
+            , m_renderCameraNode(nullptr)
+            , m_techniqueFilter(nullptr)
+            , m_passFilter(nullptr)
+            , m_hasLayerFilter(false)
         {
         }
-        CameraLens *m_renderCamera;
+        CameraLens *m_renderCameraLens;
+        Entity *m_renderCameraNode;
         const TechniqueFilter *m_techniqueFilter;
         const RenderPassFilter *m_passFilter;
-        QMatrix4x4 *m_viewMatrix;
-        QMatrix4x4 *m_viewProjectionMatrix;
-        QStringList m_layers;
-        QList<Qt3DCore::QNodeId> m_sortingCriteria;
+        QMatrix4x4 m_viewMatrix;
+        QMatrix4x4 m_viewProjectionMatrix;
+        bool m_hasLayerFilter;
+        Qt3DCore::QNodeIdVector m_layerIds;
+        QVector<Qt3DRender::QSortPolicy::SortType> m_sortingTypes;
         QVector3D m_eyePos;
-        UniformBlockValueBuilder m_uniformBlockBuilder;
     };
 
-    struct LightSource {
-        LightSource() : entity(Q_NULLPTR) { }
-        LightSource(Entity *entity, const QList<Light *> &lights)
-            : entity(entity), lights(lights) { }
-        Entity *entity;
-        QList<Light *> lights;
-    };
+    bool isDownloadBuffersEnable() const;
+    void setIsDownloadBuffersEnable(bool isDownloadBuffersEnable);
 
 private:
     void setShaderAndUniforms(RenderCommand *command, RenderPass *pass, ParameterInfoList &parameters, const QMatrix4x4 &worldTransform,
-                              const QVector<LightSource> &activeLightSources);
+                              const QVector<LightSource> &activeLightSources, EnvironmentLight *environmentLight) const;
+
+    mutable QThreadStorage<UniformBlockValueBuilder*> m_localData;
+
+    Qt3DCore::QNodeId m_renderCaptureNodeId;
+    bool m_isDownloadBuffersEnable;
 
     Renderer *m_renderer;
     NodeManagers *m_manager;
     QSize m_surfaceSize;
-    Qt3DCore::QFrameAllocator *m_allocator;
+    qreal m_devicePixelRatio;
 
-    InnerData *m_data;
+    InnerData m_data;
 
-    mutable QColor *m_clearColor;
-    mutable QRectF *m_viewport;
-    HTarget m_renderTarget;
+    QRectF m_viewport;
+    float m_gamma;
+    Qt3DCore::QNodeId m_renderTarget;
+    QSurface *m_surface;
     AttachmentPack m_attachmentPack;
-    QClearBuffer::BufferType m_clearBuffer;
+    QClearBuffers::BufferTypeFlags m_clearBuffer;
+    float m_clearDepthValue;
+    int m_clearStencilValue;
+    ClearBufferInfo m_globalClearColorBuffer;               // global ClearColor
+    QVector<ClearBufferInfo> m_specificClearColorBuffers;   // different draw buffers with distinct colors
     RenderStateSet *m_stateSet;
-    bool m_noDraw;
-    bool m_frustumCulling;
+    bool m_noDraw:1;
+    bool m_compute:1;
+    bool m_frustumCulling:1;
+    int m_workGroups[3];
+    QMemoryBarrier::Operations m_memoryBarrier;
 
     // We do not use pointers to RenderNodes or Drawable's here so that the
     // render aspect is free to change the drawables on the next frame whilst
     // the render thread is submitting these commands.
     QVector<RenderCommand *> m_commands;
+    mutable QVector<LightSource> m_lightSources;
+    EnvironmentLight *m_environmentLight;
 
-    QVector<LightSource> m_lightSources;
+    QHash<Qt3DCore::QNodeId, QVector<RenderPassParameterData>> m_parameters;
 
-    typedef QHash<QString, QUniformValue* (RenderView::*)(const QMatrix4x4& model) const> StandardUniformsPFuncsHash;
-    static StandardUniformsPFuncsHash ms_standardUniformSetters;
-    static StandardUniformsPFuncsHash initializeStandardUniformSetters();
-    static QStringList ms_standardAttributesNames;
-    static QStringList initializeStandardAttributeNames();
+    enum StandardUniform
+    {
+        ModelMatrix,
+        ViewMatrix,
+        ProjectionMatrix,
+        ModelViewMatrix,
+        ViewProjectionMatrix,
+        ModelViewProjectionMatrix,
+        InverseModelMatrix,
+        InverseViewMatrix,
+        InverseProjectionMatrix,
+        InverseModelViewMatrix,
+        InverseViewProjectionMatrix,
+        InverseModelViewProjectionMatrix,
+        ModelNormalMatrix,
+        ModelViewNormalMatrix,
+        ViewportMatrix,
+        InverseViewportMatrix,
+        Time,
+        Exposure,
+        Gamma,
+        EyePosition
+    };
 
-    QUniformValue *modelMatrix(const QMatrix4x4& model) const;
-    QUniformValue *viewMatrix(const QMatrix4x4&) const;
-    QUniformValue *projectionMatrix(const QMatrix4x4 &) const;
-    QUniformValue *modelViewMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *modelViewProjectionMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *inverseModelMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *inverseViewMatrix(const QMatrix4x4 &) const;
-    QUniformValue *inverseProjectionMatrix(const QMatrix4x4 &) const;
-    QUniformValue *inverseModelViewMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *inverseModelViewProjectionMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *modelNormalMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *modelViewNormalMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *viewportMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *inverseViewportMatrix(const QMatrix4x4 &model) const;
-    QUniformValue *time(const QMatrix4x4 &model) const;
-    QUniformValue *eyePosition(const QMatrix4x4 &model) const;
+    typedef QHash<int, StandardUniform> StandardUniformsNameToTypeHash;
+    static StandardUniformsNameToTypeHash ms_standardUniformSetters;
+    static StandardUniformsNameToTypeHash initializeStandardUniformSetters();
 
-    void setUniformValue(QUniformPack &uniformPack, const QString &name, const QVariant &value);
-    void setStandardUniformValue(QUniformPack &uniformPack, const QString &glslName, const QString &name, const QMatrix4x4 &worldTransform);
-    void setUniformBlockValue(QUniformPack &uniformPack,
+    UniformValue standardUniformValue(StandardUniform standardUniformType, const QMatrix4x4 &model) const;
+
+    void setUniformValue(ShaderParameterPack &uniformPack, int nameId, const UniformValue &value) const;
+    void setStandardUniformValue(ShaderParameterPack &uniformPack, int glslNameId, int nameId, const QMatrix4x4 &worldTransform) const;
+    void setUniformBlockValue(ShaderParameterPack &uniformPack,
                               Shader *shader,
                               const ShaderUniformBlock &block,
-                              const QVariant &value);
-    void setDefaultUniformBlockShaderDataValue(QUniformPack &uniformPack,
+                              const UniformValue &value) const;
+    void setShaderStorageValue(ShaderParameterPack &uniformPack,
+                               Shader *shader,
+                               const ShaderStorageBlock &block,
+                               const UniformValue &value) const;
+    void setDefaultUniformBlockShaderDataValue(ShaderParameterPack &uniformPack,
                                                Shader *shader,
                                                ShaderData *shaderData,
-                                               const QString &structName);
-    void buildSortingKey(RenderCommand *command);
+                                               const QString &structName) const;
+    void prepareForSorting(RenderCommand *command) const;
 };
 
 } // namespace Render

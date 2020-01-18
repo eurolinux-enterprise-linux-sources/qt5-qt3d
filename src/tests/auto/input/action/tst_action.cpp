@@ -1,48 +1,54 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include <QtTest/QTest>
+#include <qbackendnodetester.h>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/qscenepropertychange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
 #include <Qt3DInput/private/action_p.h>
 #include <Qt3DInput/QActionInput>
 #include <Qt3DInput/QAction>
+#include <Qt3DCore/private/qbackendnode_p.h>
+#include "testpostmanarbiter.h"
 
-class tst_Action: public QObject
+class DummyActionInput : public Qt3DInput::QActionInput
+{
+    Q_OBJECT
+public:
+    DummyActionInput(Qt3DCore::QNode *parent = nullptr)
+        : Qt3DInput::QActionInput(parent)
+    {}
+};
+
+class tst_Action : public Qt3DCore::QBackendNodeTester
 {
     Q_OBJECT
 
@@ -56,15 +62,13 @@ private Q_SLOTS:
         Qt3DInput::QActionInput actionInput;
 
         action.addInput(&actionInput);
-        action.setName(QStringLiteral("L88"));
 
         // WHEN
-        backendAction.setPeer(&action);
+        simulateInitialization(&action, &backendAction);
 
         // THEN
-        QCOMPARE(backendAction.peerUuid(), action.id());
+        QCOMPARE(backendAction.peerId(), action.id());
         QCOMPARE(backendAction.isEnabled(), action.isEnabled());
-        QCOMPARE(backendAction.name(), action.name());
         QCOMPARE(backendAction.inputs().size(), action.inputs().size());
 
         const int inputsCount = backendAction.inputs().size();
@@ -80,27 +84,23 @@ private Q_SLOTS:
         Qt3DInput::Input::Action backendAction;
 
         // THEN
-        QVERIFY(backendAction.peerUuid().isNull());
-        QVERIFY(backendAction.name().isEmpty());
+        QVERIFY(backendAction.peerId().isNull());
         QCOMPARE(backendAction.actionTriggered(), false);
         QCOMPARE(backendAction.isEnabled(), false);
         QCOMPARE(backendAction.inputs().size(), 0);
 
         // GIVEN
-        Qt3DInput::QAction axis;
+        Qt3DInput::QAction action;
         Qt3DInput::QActionInput axisInput;
 
-        axis.addInput(&axisInput);
-        axis.setName(QStringLiteral("L88"));
+        action.addInput(&axisInput);
 
         // WHEN
-        backendAction.updateFromPeer(&axis);
+        simulateInitialization(&action, &backendAction);
         backendAction.setActionTriggered(true);
         backendAction.cleanup();
 
         // THEN
-        QVERIFY(backendAction.peerUuid().isNull());
-        QVERIFY(backendAction.name().isEmpty());
         QCOMPARE(backendAction.actionTriggered(), false);
         QCOMPARE(backendAction.isEnabled(), false);
         QCOMPARE(backendAction.inputs().size(), 0);
@@ -110,18 +110,10 @@ private Q_SLOTS:
     {
         // GIVEN
         Qt3DInput::Input::Action backendAction;
+        Qt3DCore::QPropertyUpdatedChangePtr updateChange;
 
         // WHEN
-        Qt3DCore::QScenePropertyChangePtr updateChange(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeUpdated, Qt3DCore::QSceneChange::Node, Qt3DCore::QNodeId()));
-        updateChange->setValue(QStringLiteral("LT1"));
-        updateChange->setPropertyName("name");
-        backendAction.sceneChangeEvent(updateChange);
-
-        // THEN
-        QCOMPARE(backendAction.name(), QStringLiteral("LT1"));
-
-        // WHEN
-        updateChange.reset(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeUpdated, Qt3DCore::QSceneChange::Node, Qt3DCore::QNodeId()));
+        updateChange = QSharedPointer<Qt3DCore::QPropertyUpdatedChange>::create(Qt3DCore::QNodeId());
         updateChange->setPropertyName("enabled");
         updateChange->setValue(true);
         backendAction.sceneChangeEvent(updateChange);
@@ -130,24 +122,71 @@ private Q_SLOTS:
         QCOMPARE(backendAction.isEnabled(), true);
 
         // WHEN
-        Qt3DCore::QNodeId inputId = Qt3DCore::QNodeId::createId();
-        updateChange.reset(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeAdded, Qt3DCore::QSceneChange::Node, Qt3DCore::QNodeId()));
-        updateChange->setPropertyName("input");
-        updateChange->setValue(QVariant::fromValue(inputId));
-        backendAction.sceneChangeEvent(updateChange);
+        DummyActionInput input;
+        const Qt3DCore::QNodeId inputId = input.id();
+        const auto nodeAddedChange = Qt3DCore::QPropertyNodeAddedChangePtr::create(Qt3DCore::QNodeId(), &input);
+        nodeAddedChange->setPropertyName("input");
+        backendAction.sceneChangeEvent(nodeAddedChange);
 
         // THEN
         QCOMPARE(backendAction.inputs().size(), 1);
         QCOMPARE(backendAction.inputs().first(), inputId);
 
         // WHEN
-        updateChange.reset(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeRemoved, Qt3DCore::QSceneChange::Node, Qt3DCore::QNodeId()));
-        updateChange->setPropertyName("input");
-        updateChange->setValue(QVariant::fromValue(inputId));
-        backendAction.sceneChangeEvent(updateChange);
+        const auto nodeRemovedChange = Qt3DCore::QPropertyNodeRemovedChangePtr::create(Qt3DCore::QNodeId(), &input);
+        nodeRemovedChange->setPropertyName("input");
+        backendAction.sceneChangeEvent(nodeRemovedChange);
 
         // THEN
         QCOMPARE(backendAction.inputs().size(), 0);
+    }
+
+    void checkActivePropertyBackendNotification()
+    {
+        // GIVEN
+        TestArbiter arbiter;
+        Qt3DInput::Input::Action backendAction;
+        backendAction.setEnabled(true);
+        Qt3DCore::QBackendNodePrivate::get(&backendAction)->setArbiter(&arbiter);
+        const bool currentActionTriggeredValue = backendAction.actionTriggered();
+
+        // WHEN
+        backendAction.setActionTriggered(true);
+
+        // THEN
+        QVERIFY(currentActionTriggeredValue != backendAction.actionTriggered());
+        QCOMPARE(arbiter.events.count(), 1);
+        Qt3DCore::QPropertyUpdatedChangePtr change = arbiter.events.first().staticCast<Qt3DCore::QPropertyUpdatedChange>();
+        QCOMPARE(change->propertyName(), "active");
+        QCOMPARE(change->value().toBool(), backendAction.actionTriggered());
+
+
+        arbiter.events.clear();
+
+        // WHEN
+        backendAction.setActionTriggered(true);
+
+        // THEN
+        QVERIFY(currentActionTriggeredValue != backendAction.actionTriggered());
+        QCOMPARE(arbiter.events.count(), 0);
+
+        arbiter.events.clear();
+    }
+
+    void shouldNotActivateWhenDisabled()
+    {
+        // GIVEN
+        TestArbiter arbiter;
+        Qt3DInput::Input::Action backendAction;
+        backendAction.setEnabled(false);
+        Qt3DCore::QBackendNodePrivate::get(&backendAction)->setArbiter(&arbiter);
+
+        // WHEN
+        backendAction.setActionTriggered(true);
+
+        // THEN
+        QVERIFY(!backendAction.actionTriggered());
+        QCOMPARE(arbiter.events.count(), 0);
     }
 };
 

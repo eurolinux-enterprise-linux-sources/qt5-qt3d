@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -52,6 +55,8 @@
 #include <Qt3DCore/qnodeid.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qvariant.h>
+#include <QMatrix4x4>
+#include <Qt3DRender/private/uniform_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -71,52 +76,56 @@ class RenderPass;
 class RenderStateSet;
 class Technique;
 class RenderView;
+class TechniqueFilter;
+class RenderPassFilter;
 class Renderer;
 class NodeManagers;
 class ShaderDataManager;
 struct ShaderUniform;
 class ShaderData;
-class RenderState;
+class TextureManager;
+class RenderStateManager;
+class RenderStateCollection;
 
 Q_AUTOTEST_EXPORT void setRenderViewConfigFromFrameGraphLeafNode(RenderView *rv,
                                                                  const FrameGraphNode *fgLeaf);
 
 Q_AUTOTEST_EXPORT Technique *findTechniqueForEffect(Renderer *renderer,
-                                                    RenderView *renderView,
+                                                    const TechniqueFilter *techniqueFilter,
                                                     Effect *effect);
 
-typedef QVarLengthArray<RenderPass*, 4> RenderRenderPassList;
-Q_AUTOTEST_EXPORT RenderRenderPassList findRenderPassesForTechnique(NodeManagers *manager,
-                                                                    RenderView *renderView,
-                                                                    Technique *technique);
+typedef QVarLengthArray<RenderPass*, 4> RenderPassList;
+Q_AUTOTEST_EXPORT RenderPassList findRenderPassesForTechnique(NodeManagers *manager,
+                                                              const RenderPassFilter *passFilter,
+                                                              Technique *technique);
+
+// Extracts the type T from a QVariant v without using QVariant::value which is slow
+// Note: Assumes you are 100% sure about the type you requested
+template<typename T>
+Q_AUTOTEST_EXPORT inline T variant_value(const QVariant &v)
+{
+    return *reinterpret_cast<const T *>(v.data());
+}
 
 struct ParameterInfo
 {
-    ParameterInfo(const QString &name = QString(), const QVariant &value = QVariant())
-        : name(name)
-        , value(value)
-    {}
+    explicit ParameterInfo(const int nameId = -1, const UniformValue &value = UniformValue());
 
-    QString name;
-    QVariant value;
+    int nameId;
+    UniformValue value;
 
-    bool operator<(const QString &otherName) const
-    {
-        return name < otherName;
-    }
-
-    bool operator<(const ParameterInfo &other) const
-    {
-        return name < other.name;
-    }
+    bool operator<(const int otherNameId) const Q_DECL_NOEXCEPT;
+    bool operator<(const ParameterInfo &other) const Q_DECL_NOEXCEPT;
 };
+typedef QVector<ParameterInfo> ParameterInfoList;
 
-inline bool operator<(const QString &otherName, const ParameterInfo &pi)
+struct RenderPassParameterData
 {
-    return otherName < pi.name;
-}
+    RenderPass *pass;
+    ParameterInfoList parameterInfo;
+};
+QT3D_DECLARE_TYPEINFO_2(Qt3DRender, Render, RenderPassParameterData, Q_MOVABLE_TYPE)
 
-typedef QVarLengthArray<ParameterInfo, 16> ParameterInfoList;
 
 Q_AUTOTEST_EXPORT void parametersFromMaterialEffectTechnique(ParameterInfoList *infoList,
                                                              ParameterManager *manager,
@@ -125,30 +134,32 @@ Q_AUTOTEST_EXPORT void parametersFromMaterialEffectTechnique(ParameterInfoList *
                                                              Technique *technique);
 
 Q_AUTOTEST_EXPORT void addParametersForIds(ParameterInfoList *params, ParameterManager *manager,
-                                           const QList<Qt3DCore::QNodeId> &parameterIds);
+                                           const QVector<Qt3DCore::QNodeId> &parameterIds);
 
 template<class T>
 void parametersFromParametersProvider(ParameterInfoList *infoList,
                                       ParameterManager *manager,
-                                      T *pass)
+                                      T *provider)
 {
-    if (pass)
-        addParametersForIds(infoList, manager, pass->parameters());
+    addParametersForIds(infoList, manager, provider->parameters());
 }
 
-Q_AUTOTEST_EXPORT ParameterInfoList::iterator findParamInfo(ParameterInfoList *infoList,
-                                                            const QString &name);
+Q_AUTOTEST_EXPORT ParameterInfoList::const_iterator findParamInfo(ParameterInfoList *infoList,
+                                                                  const int nameId);
 
-Q_AUTOTEST_EXPORT RenderStateSet *buildRenderStateSet(const QList<RenderState*> &states,
-                                                      Qt3DCore::QFrameAllocator *allocator);
+Q_AUTOTEST_EXPORT void addToRenderStateSet(RenderStateSet *stateSet,
+                                           const QVector<Qt3DCore::QNodeId> stateIds,
+                                           RenderStateManager *manager);
 
+typedef QHash<int, QVariant> UniformBlockValueBuilderHash;
 
 struct Q_AUTOTEST_EXPORT UniformBlockValueBuilder
 {
     UniformBlockValueBuilder();
     ~UniformBlockValueBuilder();
 
-    void buildActiveUniformNameValueMapHelper(const QString &blockName,
+    void buildActiveUniformNameValueMapHelper(ShaderData *currentShaderData,
+                                              const QString &blockName,
                                               const QString &qmlPropertyName,
                                               const QVariant &value);
     void buildActiveUniformNameValueMapStructHelper(ShaderData *rShaderData,
@@ -157,14 +168,14 @@ struct Q_AUTOTEST_EXPORT UniformBlockValueBuilder
 
     bool updatedPropertiesOnly;
     QHash<QString, ShaderUniform> uniforms;
-    QHash<QString, QVariant> activeUniformNamesToValue;
+    UniformBlockValueBuilderHash activeUniformNamesToValue;
     ShaderDataManager *shaderDataManager;
+    TextureManager *textureManager;
+    QMatrix4x4 viewMatrix;
 };
 
 } // namespace Render
 } // namespace Qt3DRender
-
-Q_DECLARE_TYPEINFO(Qt3DRender::Render::ParameterInfo, Q_MOVABLE_TYPE);
 
 QT_END_NAMESPACE
 

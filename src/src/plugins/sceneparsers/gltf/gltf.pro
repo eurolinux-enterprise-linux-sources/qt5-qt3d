@@ -1,17 +1,19 @@
-TARGET = gltfsceneparser
+TARGET = gltfsceneimport
+QT += core-private 3dcore 3dcore-private 3drender 3drender-private 3dextras
 
-QT += core-private 3dcore 3dcore-private 3drender 3drender-private
+# Qt3D is free of Q_FOREACH - make sure it stays that way:
+DEFINES += QT_NO_FOREACH
 
 HEADERS += \
-    gltfparser.h
+    gltfimporter.h
 
 SOURCES += \
-    gltfparser.cpp \
-    main.cpp
+    main.cpp \
+    gltfimporter.cpp
 
 DISTFILES += \
     gltf.json
 
 PLUGIN_TYPE = sceneparsers
-PLUGIN_CLASS_NAME = GLTFSceneParserPlugin
+PLUGIN_CLASS_NAME = GLTFSceneImportPlugin
 load(qt_plugin)

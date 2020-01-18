@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,9 +51,12 @@
 // We mean it.
 //
 
-#include <private/qobject_p.h>
-#include <Qt3DCore/private/qaspectfactory_p.h>
+#include <Qt3DCore/qt3dcore-config.h>
+#include <Qt3DCore/qnodecreatedchange.h>
 #include <QtCore/qsharedpointer.h>
+
+#include <Qt3DCore/private/qaspectfactory_p.h>
+#include <QtCore/private/qobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -63,10 +69,17 @@ class QAspectThread;
 class QPostman;
 class QScene;
 
-class QAspectEnginePrivate : public QObjectPrivate
+#ifdef QT3D_JOBS_RUN_STATS
+namespace Debug {
+class AspectCommandDebugger;
+} // Debug
+#endif // QT3D_JOBS_RUN_STATS
+
+class QT3DCORE_PRIVATE_EXPORT QAspectEnginePrivate : public QObjectPrivate
 {
 public:
     QAspectEnginePrivate();
+    ~QAspectEnginePrivate();
 
     Q_DECLARE_PUBLIC(QAspectEngine)
 
@@ -75,14 +88,27 @@ public:
     QPostman *m_postman;
     QScene *m_scene;
     QSharedPointer<QEntity> m_root;
-    QList<QAbstractAspect*> m_aspects;
+    QVector<QAbstractAspect*> m_aspects;
+    QHash<QString, QAbstractAspect *> m_namedAspects;
+    bool m_initialized;
+
+#ifdef QT3D_JOBS_RUN_STATS
+    Debug::AspectCommandDebugger *m_commandDebugger;
+#endif // QT3D_JOBS_RUN_STATS
 
     void initialize();
     void shutdown();
 
+    void exitSimulationLoop();
+
     void initNodeTree(QNode *node);
     void initNode(QNode *node);
     void initEntity(QEntity *entity);
+
+    void generateCreationChanges(QNode *rootNode);
+    QVector<QNodeCreatedChangeBasePtr> m_creationChanges;
+
+    static QAspectEnginePrivate *get(QAspectEngine *engine);
 };
 
 } // Qt3D

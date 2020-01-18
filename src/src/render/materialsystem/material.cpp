@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,8 +45,11 @@
 #include "qtechnique.h"
 #include "qmaterial.h"
 #include "qeffect.h"
+#include <Qt3DRender/private/qmaterial_p.h>
 
-#include <Qt3DCore/qscenepropertychange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
 
 using namespace Qt3DCore;
 
@@ -53,8 +59,7 @@ namespace Qt3DRender {
 namespace Render {
 
 Material::Material()
-    : QBackendNode()
-    , m_enabled(true)
+    : BackendNode()
 {
 }
 
@@ -65,54 +70,52 @@ Material::~Material()
 
 void Material::cleanup()
 {
+    QBackendNode::setEnabled(false);
     m_parameterPack.clear();
 }
 
-void Material::updateFromPeer(Qt3DCore::QNode *node)
+void Material::initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change)
 {
-    QMaterial *mat = static_cast<QMaterial *>(node);
-    m_parameterPack.clear();
-    m_enabled = mat->isEnabled();
-    if (mat->effect() != Q_NULLPTR)
-        m_effectUuid = mat->effect()->id();
-    Q_FOREACH (QParameter *p, mat->parameters())
-        m_parameterPack.appendParameter(p->id());
+    const auto typedChange = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<QMaterialData>>(change);
+    const auto &data = typedChange->data;
+    m_effectUuid = data.effectId;
+    m_parameterPack.setParameters(data.parameterIds);
 }
 
 void Material::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e)
 {
-    QScenePropertyChangePtr propertyChange = qSharedPointerCast<QScenePropertyChange>(e);
 
     switch (e->type()) {
-    case NodeUpdated: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("enabled"))
-            m_enabled = propertyChange->value().toBool();
-        else if (propertyChange->propertyName() == QByteArrayLiteral("effect"))
-            m_effectUuid = propertyChange->value().value<QNodeId>();
+    case PropertyUpdated: {
+        const auto change = qSharedPointerCast<QPropertyUpdatedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("effect"))
+            m_effectUuid = change->value().value<QNodeId>();
         break;
     }
-        // Check for shader parameter
-    case NodeAdded: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("parameter"))
-            m_parameterPack.appendParameter(propertyChange->value().value<QNodeId>());
-        else if (propertyChange->propertyName() == QByteArrayLiteral("effect"))
-            m_effectUuid = propertyChange->value().value<QNodeId>();
+
+    case PropertyValueAdded: {
+        const auto change = qSharedPointerCast<QPropertyNodeAddedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("parameter"))
+            m_parameterPack.appendParameter(change->addedNodeId());
         break;
     }
-    case NodeRemoved: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("parameter"))
-            m_parameterPack.removeParameter(propertyChange->value().value<QNodeId>());
-        else if (propertyChange->propertyName() == QByteArrayLiteral("effect"))
-            m_effectUuid = QNodeId();
+
+    case PropertyValueRemoved: {
+        const auto change = qSharedPointerCast<QPropertyNodeRemovedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("parameter"))
+            m_parameterPack.removeParameter(change->removedNodeId());
         break;
     }
 
     default:
         break;
     }
+    markDirty(AbstractRenderer::AllDirty);
+
+    BackendNode::sceneChangeEvent(e);
 }
 
-QList<Qt3DCore::QNodeId> Material::parameters() const
+QVector<Qt3DCore::QNodeId> Material::parameters() const
 {
     return m_parameterPack.parameters();
 }

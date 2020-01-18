@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,13 +51,20 @@
 // We mean it.
 //
 
+#include <Qt3DRender/private/backendnode_p.h>
 #include <Qt3DCore/private/qhandle_p.h>
 #include <Qt3DCore/qnode.h>
-#include <Qt3DCore/qbackendnode.h>
 #include <Qt3DRender/qframegraphnode.h>
 #include <Qt3DRender/private/managers_p.h>
+#include <Qt3DRender/private/nodemanagers_p.h>
 #include <qglobal.h>
 #include <QVector>
+
+// Windows had the smart idea of using a #define MemoryBarrier
+// https://msdn.microsoft.com/en-us/library/windows/desktop/ms684208(v=vs.85).aspx
+#if defined(Q_OS_WIN) && defined(MemoryBarrier)
+#undef MemoryBarrier
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -62,7 +72,9 @@ namespace Qt3DRender {
 
 namespace Render {
 
-class Q_AUTOTEST_EXPORT FrameGraphNode : public Qt3DCore::QBackendNode
+class FrameGraphManager;
+
+class Q_AUTOTEST_EXPORT FrameGraphNode : public BackendNode
 {
 public:
     FrameGraphNode();
@@ -76,113 +88,109 @@ public:
         RenderTarget,
         TechniqueFilter,
         Viewport,
-        ClearBuffer,
+        ClearBuffers,
         SortMethod,
         SubtreeSelector,
         StateSet,
         NoDraw,
         FrustumCulling,
         Lighting,
-        ComputeDispatch
+        ComputeDispatch,
+        Surface,
+        RenderCapture,
+        BufferCapture,
+        MemoryBarrier
     };
     FrameGraphNodeType nodeType() const { return m_nodeType; }
-
-    void setEnabled(bool enabled) { m_enabled = enabled; }
-    inline bool isEnabled() const { return m_enabled; }
 
     void setFrameGraphManager(FrameGraphManager *manager);
     FrameGraphManager *manager() const;
 
-    void setHandle(HFrameGraphNode handle);
-    void setParentHandle(HFrameGraphNode parentHandle);
-    void appendChildHandle(HFrameGraphNode childHandle);
-    void removeChildHandle(HFrameGraphNode childHandle);
+    void setParentId(Qt3DCore::QNodeId parentId);
+    void appendChildId(Qt3DCore::QNodeId childHandle);
+    void removeChildId(Qt3DCore::QNodeId childHandle);
 
-    HFrameGraphNode handle() const;
-    HFrameGraphNode parentHandle() const;
-    QList<HFrameGraphNode> childrenHandles() const;
+    Qt3DCore::QNodeId parentId() const;
+    QVector<Qt3DCore::QNodeId> childrenIds() const;
 
     FrameGraphNode *parent() const;
-    QList<FrameGraphNode *> children() const;
+    QVector<FrameGraphNode *> children() const;
+
+    void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e) Q_DECL_OVERRIDE;
 
 protected:
-    FrameGraphNode(FrameGraphNodeType nodeType);
+    FrameGraphNode(FrameGraphNodeType nodeType, QBackendNode::Mode mode = QBackendNode::ReadOnly);
+    void initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change) Q_DECL_OVERRIDE;
 
 private:
     FrameGraphNodeType m_nodeType;
-    bool m_enabled;
-    HFrameGraphNode m_handle;
-    HFrameGraphNode m_parentHandle;
-    QList<HFrameGraphNode> m_childrenHandles;
+    Qt3DCore::QNodeId m_parentId;
+    QVector<Qt3DCore::QNodeId> m_childrenIds;
     FrameGraphManager *m_manager;
 
     friend class FrameGraphVisitor;
 };
 
 template<typename Backend, typename Frontend>
-class FrameGraphNodeFunctor : public Qt3DCore::QBackendNodeFunctor
+class FrameGraphNodeFunctor : public Qt3DCore::QBackendNodeMapper
 {
 public:
-    explicit FrameGraphNodeFunctor(FrameGraphManager *manager)
-        : m_manager(manager)
+    explicit FrameGraphNodeFunctor(AbstractRenderer *renderer)
+        : m_manager(renderer->nodeManagers()->frameGraphManager())
+        , m_renderer(renderer)
     {
     }
 
-    Qt3DCore::QBackendNode *create(Qt3DCore::QNode *frontend, const Qt3DCore::QBackendNodeFactory *factory) const Q_DECL_OVERRIDE
+    Qt3DCore::QBackendNode *create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const Q_DECL_OVERRIDE
     {
-        return createBackendFrameGraphNode(frontend, factory);
+        return createBackendFrameGraphNode(change);
     }
 
-    Qt3DCore::QBackendNode *get(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE
+    Qt3DCore::QBackendNode *get(Qt3DCore::QNodeId id) const Q_DECL_OVERRIDE
     {
-        FrameGraphNode **node = m_manager->lookupResource(id);
-        if (node != Q_NULLPTR)
-            return *node;
-        return Q_NULLPTR;
+        return m_manager->lookupNode(id);
     }
 
-    void destroy(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE
+    void destroy(Qt3DCore::QNodeId id) const Q_DECL_OVERRIDE
     {
-        m_manager->releaseResource(id);
+        m_manager->releaseNode(id);
     }
 
 protected:
-    Backend *createBackendFrameGraphNode(Qt3DCore::QNode *n, const Qt3DCore::QBackendNodeFactory *factory) const
+    Backend *createBackendFrameGraphNode(Qt3DCore::QNode *n) const
     {
         Frontend *f = qobject_cast<Frontend *>(n);
-        if (f != Q_NULLPTR) {
-            HFrameGraphNode handle = m_manager->lookupHandle(n->id());
-            if (handle.isNull()) {
-                handle = m_manager->getOrAcquireHandle(n->id());
+        if (f != nullptr) {
+            if (!m_manager->containsNode(n->id())) {
                 Backend *backend = new Backend();
-                *m_manager->data(handle) = backend;
-                backend->setFactory(factory);
                 backend->setFrameGraphManager(m_manager);
-                backend->setHandle(handle);
                 backend->setPeer(f);
+                backend->setRenderer(m_renderer);
                 QFrameGraphNode *parentFGNode = static_cast<QFrameGraphNode *>(n)->parentFrameGraphNode();
                 if (parentFGNode)
-                    backend->setParentHandle(m_manager->lookupHandle(parentFGNode->id()));
+                    backend->setParentId(parentFGNode->id());
+                m_manager->appendNode(backend->peerId(), backend);
                 return backend;
             }
-            return static_cast<Backend *>(*m_manager->data(handle));
+            return static_cast<Backend *>(m_manager->lookupNode(n->id()));
         }
-        return Q_NULLPTR;
+        return nullptr;
+    }
+
+    Backend *createBackendFrameGraphNode(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const
+    {
+        if (!m_manager->containsNode(change->subjectId())) {
+            Backend *backend = new Backend();
+            backend->setFrameGraphManager(m_manager);
+            backend->setRenderer(m_renderer);
+            m_manager->appendNode(change->subjectId(), backend);
+            return backend;
+        }
+        return static_cast<Backend *>(m_manager->lookupNode(change->subjectId()));
     }
 
 private:
     FrameGraphManager *m_manager;
-};
-
-class FrameGraphComponentFunctor : public Qt3DCore::QBackendNodeFunctor
-{
-public:
-    explicit FrameGraphComponentFunctor(AbstractRenderer *renderer);
-    Qt3DCore::QBackendNode *create(Qt3DCore::QNode *frontend, const Qt3DCore::QBackendNodeFactory *factory) const Q_DECL_OVERRIDE;
-    Qt3DCore::QBackendNode *get(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE;
-    void destroy(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE;
-
-private:
     AbstractRenderer *m_renderer;
 };
 

@@ -1,34 +1,37 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,13 +51,12 @@
 // We mean it.
 //
 
-#include "qaspectjobmanager_p.h"
-
-#include <QtCore/QtGlobal>
-#include <QtCore/QThread>
-#include <QtCore/QSharedPointer>
-
 #include <QtCore/QRunnable>
+#include <QtCore/QSharedPointer>
+#include <QtCore/QThread>
+#include <QtCore/QtGlobal>
+
+#include <Qt3DCore/private/qaspectjobmanager_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,12 +69,14 @@ class QThreadPooler;
 class RunnableInterface : public QRunnable
 {
 public:
+    enum class RunnableType {
+        AspectTask,
+        SyncTask
+    };
+
     virtual ~RunnableInterface();
 
     virtual void run() = 0;
-
-    virtual void setDependencyHandler(DependencyHandler *) = 0;
-    virtual DependencyHandler *dependencyHandler() = 0;
 
     virtual int id() = 0;
     virtual void setId(int id) = 0;
@@ -81,6 +85,8 @@ public:
     virtual bool reserved() = 0;
 
     virtual void setPooler(QThreadPooler *pooler) = 0;
+
+    virtual RunnableType type() const = 0;
 };
 
 class AspectTaskRunnable : public RunnableInterface
@@ -91,9 +97,6 @@ public:
 
     void run() Q_DECL_OVERRIDE;
 
-    void setDependencyHandler(DependencyHandler *handler) Q_DECL_OVERRIDE;
-    DependencyHandler *dependencyHandler() Q_DECL_OVERRIDE;
-
     void setPooler(QThreadPooler *pooler) Q_DECL_OVERRIDE { m_pooler = pooler; }
 
     void setReserved(bool reserved) Q_DECL_OVERRIDE { m_reserved = reserved; }
@@ -102,15 +105,17 @@ public:
     int id() Q_DECL_OVERRIDE { return m_id; }
     void setId(int id) Q_DECL_OVERRIDE { m_id = id; }
 
+    RunnableType type() const Q_DECL_OVERRIDE { return RunnableType::AspectTask; }
+
 public:
     QSharedPointer<QAspectJob> m_job;
+    QVector<AspectTaskRunnable *> m_dependers;
+    int m_dependerCount = 0;
 
 private:
-    DependencyHandler *m_dependencyHandler;
     QThreadPooler *m_pooler;
-    bool m_reserved;
-
     int m_id; // For testing purposes for now
+    bool m_reserved;
 };
 
 class SyncTaskRunnable : public RunnableInterface
@@ -122,9 +127,6 @@ public:
 
     void run() Q_DECL_OVERRIDE;
 
-    void setDependencyHandler(DependencyHandler *handler) Q_DECL_OVERRIDE;
-    DependencyHandler *dependencyHandler() Q_DECL_OVERRIDE;
-
     void setPooler(QThreadPooler *pooler) Q_DECL_OVERRIDE { m_pooler = pooler; }
 
     void setReserved(bool reserved) Q_DECL_OVERRIDE { m_reserved = reserved; }
@@ -132,6 +134,8 @@ public:
 
     int id() Q_DECL_OVERRIDE { return m_id; }
     void setId(int id) Q_DECL_OVERRIDE { m_id = id; }
+
+    RunnableType type() const Q_DECL_OVERRIDE { return RunnableType::SyncTask; }
 
 private:
     QAbstractAspectJobManager::JobFunction m_func;

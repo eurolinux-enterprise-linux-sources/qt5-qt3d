@@ -1,45 +1,50 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qgeometry.h"
+#include "qgeometryfactory.h"
 #include "qgeometry_p.h"
 #include <private/qnode_p.h>
-#include <Qt3DCore/qscenepropertychange.h>
-#include <Qt3DRender/qabstractattribute.h>
-#include <Qt3DRender/qboundingvolumespecifier.h>
+#include <Qt3DRender/qattribute.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -47,93 +52,120 @@ using namespace Qt3DCore;
 
 namespace Qt3DRender {
 
-/*!
- * \internal
- */
-void QGeometryPrivate::_q_boundingVolumeSpecifierChanged(QAbstractAttribute *)
+QGeometryFactory::~QGeometryFactory()
 {
-    if (m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeUpdated, QSceneChange::Node, m_id));
-        change->setPropertyName("boundingVolumeSpecifierPositionAttribute");
-        Qt3DCore::QNodeId positionAttributeId;
-        if (m_boundingVolumeSpecifier.positionAttribute())
-            positionAttributeId = m_boundingVolumeSpecifier.positionAttribute()->id();
-        change->setValue(QVariant::fromValue(positionAttributeId));
-        notifyObservers(change);
-    }
+}
+
+QGeometryPrivate::QGeometryPrivate()
+    : QNodePrivate(),
+      m_boundingVolumePositionAttribute(nullptr)
+{
+}
+
+QGeometryPrivate::~QGeometryPrivate()
+{
 }
 
 /*!
- * \qmltype Geometry
- * \instantiates Qt3DRender::QGeometry
- * \inqmlmodule Qt3D.Render
+    \qmltype Geometry
+    \instantiates Qt3DRender::QGeometry
+    \inqmlmodule Qt3D.Render
+    \inherits Node
+    \since 5.7
+    \brief Encapsulates geometry
+
+    A Geometry type is used to group a list of Attribute objects together
+    to form a geometric shape Qt3D is able to render using GeometryRenderer.
+    Special attribute can be set in order to calculate bounding volume of the shape.
  */
 
 /*!
- * \qmlproperty int Geometry::verticesPerPatch
- *
- * Holds vertices per patch.
+    \class Qt3DRender::QGeometry
+    \inmodule Qt3DRender
+    \since 5.7
+    \brief Encapsulates geometry
+
+    A Qt3DRender::QGeometry class is used to group a list of Qt3DRender::QAttribute
+    objects together to form a geometric shape Qt3D is able to render using
+    Qt3DRender::QGeometryRenderer. Special attribute can be set in order to calculate
+    bounding volume of the shape.
  */
 
 /*!
- * \qmlproperty BoundingVolumeSpecifier Geometry::boundingVolumeSpecifier
- *
- * Holds bounding volume specifier.
+    \qmlproperty Attribute Geometry::boundingVolumePositionAttribute
+
+    Holds the attribute used to compute the bounding volume. The bounding volume is used internally
+    for picking and view frustum culling.
+
+    If unspecified, the system will look for the attribute using the name returned by
+    QAttribute::defaultPositionAttributeName.
+
+    \sa Attribute
+ */
+/*!
+    \qmlproperty list<Attribute> Geometry::attributes
+
+    Holds the list of attributes the geometry comprises of.
  */
 
 /*!
- * \class Qt3DRender::QGeometry
- * \inmodule Qt3DRender
- *
- * \inherits Qt3DCore::QNode
- *
+    \property QGeometry::boundingVolumePositionAttribute
+
+    Holds the attribute used to compute the bounding volume. The bounding volume is used internally
+    for picking and view frustum culling.
+
+    If unspecified, the system will look for the attribute using the name returned by
+    QAttribute::defaultPositionAttributeName.
+
+    \sa Qt3DRender::QAttribute
  */
 
-/*!
- * \typedef Qt3DRender::QAttributeList
- * \relates Qt3DRender::QGeometry
- *
- * A vector of {QAbstractAttribute}s.
- */
 
 /*!
- * Constructs a new QGeometry with \a parent.
+    Constructs a new QGeometry with \a parent.
  */
 QGeometry::QGeometry(QNode *parent)
-    : QNode(*new QGeometryPrivate(), parent)
+    : QGeometry(*new QGeometryPrivate(), parent) {}
+
+/*!
+    \fn QGeometryFactory::operator()()
+
+     Returns the generated geometry.
+*/
+/*!
+    \fn bool QGeometryFactory::operator==(const QGeometryFactory &other) const = 0
+
+    Compares the factory with the factory specified in \a other.
+    Returns true if they are equal.
+*/
+/*!
+    \internal
+ */
+QGeometry::~QGeometry()
 {
-    Q_D(QGeometry);
-    QObject::connect(&d->m_boundingVolumeSpecifier, SIGNAL(positionAttributeChanged(QAbstractAttribute *)),
-                     this, SLOT(_q_boundingVolumeSpecifierChanged(QAbstractAttribute *)));
 }
 
 /*!
- * \internal
+    \internal
  */
 QGeometry::QGeometry(QGeometryPrivate &dd, QNode *parent)
     : QNode(dd, parent)
 {
-    Q_D(QGeometry);
-    QObject::connect(&d->m_boundingVolumeSpecifier, SIGNAL(positionAttributeChanged(QAbstractAttribute *)),
-                     this, SLOT(_q_boundingVolumeSpecifierChanged(QAbstractAttribute *)));
 }
 
 /*!
- * Destroys this geometry.
+    \fn void Qt3DRender::QGeometry::addAttribute(Qt3DRender::QAttribute *attribute)
+    Adds an \a attribute to this geometry.
  */
-QGeometry::~QGeometry()
+void QGeometry::addAttribute(QAttribute *attribute)
 {
-    QNode::cleanup();
-}
-
-/*!
- * Adds an \a attribute to this geometry.
- */
-void QGeometry::addAttribute(QAbstractAttribute *attribute)
-{
+    Q_ASSERT(attribute);
     Q_D(QGeometry);
     if (!d->m_attributes.contains(attribute)) {
         d->m_attributes.append(attribute);
+
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(attribute, &QGeometry::removeAttribute, d->m_attributes);
 
         // We need to add it as a child of the current node if it has been declared inline
         // Or not previously added as a child of the current node so that
@@ -142,83 +174,69 @@ void QGeometry::addAttribute(QAbstractAttribute *attribute)
         if (!attribute->parent())
             attribute->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr change(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = QPropertyNodeAddedChangePtr::create(id(), attribute);
             change->setPropertyName("attribute");
-            change->setValue(QVariant::fromValue(attribute->id()));
             d->notifyObservers(change);
         }
     }
 }
 
 /*!
- * Removes the given \a attribute from this geometry.
+    \fn Qt3DRender::QGeometry(QGeometryPrivate &dd, Qt3DCore::QNode *parent)
+
+    \internal
+*/
+/*!
+    \fn void Qt3DRender::QGeometry::removeAttribute(Qt3DRender::QAttribute *attribute)
+    Removes the given \a attribute from this geometry.
  */
-void QGeometry::removeAttribute(QAbstractAttribute *attribute)
+void QGeometry::removeAttribute(QAttribute *attribute)
 {
+    Q_ASSERT(attribute);
     Q_D(QGeometry);
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
+    if (d->m_changeArbiter != nullptr) {
+        const auto change = QPropertyNodeRemovedChangePtr::create(id(), attribute);
         change->setPropertyName("attribute");
-        change->setValue(QVariant::fromValue(attribute->id()));
         d->notifyObservers(change);
     }
     d->m_attributes.removeOne(attribute);
+    // Remove bookkeeping connection
+    d->unregisterDestructionHelper(attribute);
 }
 
-void QGeometry::setVerticesPerPatch(int verticesPerPatch)
+void QGeometry::setBoundingVolumePositionAttribute(QAttribute *boundingVolumePositionAttribute)
 {
     Q_D(QGeometry);
-    if (d->m_verticesPerPatch != verticesPerPatch) {
-        d->m_verticesPerPatch = verticesPerPatch;
-        emit verticesPerPatchChanged(verticesPerPatch);
+    if (d->m_boundingVolumePositionAttribute != boundingVolumePositionAttribute) {
+        d->m_boundingVolumePositionAttribute = boundingVolumePositionAttribute;
+        emit boundingVolumePositionAttributeChanged(boundingVolumePositionAttribute);
     }
 }
 
-/*!
- * \property QGeometry::verticesPerPatch
- *
- * Holds vertices per patch.
- */
-int QGeometry::verticesPerPatch() const
+QAttribute *QGeometry::boundingVolumePositionAttribute() const
 {
     Q_D(const QGeometry);
-    return d->m_verticesPerPatch;
+    return d->m_boundingVolumePositionAttribute;
 }
 
 /*!
- * \property QGeometry::boundingVolumeSpecifier
- *
- * Holds bounding volume specifier.
+    Returns the list of attributes in this geometry.
  */
-QBoundingVolumeSpecifier *QGeometry::boundingVolumeSpecifier()
-{
-    Q_D(QGeometry);
-    return &d->m_boundingVolumeSpecifier;
-}
-
-/*!
- * \return the list of attributes in this geometry.
- */
-QAttributeList QGeometry::attributes() const
+QVector<QAttribute *> QGeometry::attributes() const
 {
     Q_D(const QGeometry);
     return d->m_attributes;
 }
 
-/*!
- * \internal
- */
-void QGeometry::copy(const QNode *ref)
+Qt3DCore::QNodeCreatedChangeBasePtr QGeometry::createNodeCreationChange() const
 {
-    QNode::copy(ref);
-    const QGeometry *geometry = static_cast<const QGeometry *>(ref);
-    d_func()->m_verticesPerPatch = geometry->d_func()->m_verticesPerPatch;
-    Q_FOREACH (QAbstractAttribute *attribute, geometry->d_func()->m_attributes)
-        d_func()->m_attributes.append(qobject_cast<QAbstractAttribute *>(QNode::clone(attribute)));
-    // Copy bounding volume specifier attribute
-    if (geometry->d_func()->m_boundingVolumeSpecifier.positionAttribute() != Q_NULLPTR)
-        d_func()->m_boundingVolumeSpecifier.setPositionAttribute(qobject_cast<QAbstractAttribute *>(QNode::clone(geometry->d_func()->m_boundingVolumeSpecifier.positionAttribute())));
+    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QGeometryData>::create(this);
+    auto &data = creationChange->data;
+    Q_D(const QGeometry);
+    data.attributeIds = qIdsForNodes(d->m_attributes);
+    data.boundingVolumePositionAttributeId = qIdForNode(d->m_boundingVolumePositionAttribute);
+    return creationChange;
 }
 
 } // namespace Qt3DRender

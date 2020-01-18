@@ -1,100 +1,108 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 ****************************************************************************/
 
 #include "qaxis.h"
-#include <Qt3DCore/private/qnode_p.h>
-#include <Qt3DInput/qaxisinput.h>
-#include <Qt3DCore/qscenepropertychange.h>
+#include "qaxis_p.h"
+
+#include <Qt3DInput/qabstractaxisinput.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
+#include <Qt3DCore/qnodecreatedchange.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DInput {
 
-class QAxisPrivate : public Qt3DCore::QNodePrivate
-{
-public:
-    QAxisPrivate()
-        : Qt3DCore::QNodePrivate()
-    {}
-
-    QString m_name;
-    QVector<QAxisInput *> m_inputs;
-};
+/*!
+    Constructs a new QAxis instance with \a parent.
+    \class Qt3DInput::QAxis
+    \inmodule Qt3DInput
+    \inherits Qt3DCore::QNode
+    \brief QAxis stores QAbstractAxisInputs used to trigger an input event.
+    \since 5.7
+*/
 
 /*!
- * \qmltype Axis
- * \inqmlmodule Qt3D.Input
- * \since 5.5
- * \TODO
- *
- */
+    \qmltype Axis
+    \inqmlmodule Qt3D.Input
+    \instantiates Qt3DInput::QAxis
+    \brief QML frontend for the Qt3DInput::QAxis C++ class.
+
+    Links a set of AbstractAxisInputs that trigger the same event.
+    \since 5.7
+*/
 
 /*!
- * \class Qt3DInput::QAxis
- * \inmodule Qt3DInput
- * \since 5.5
- * \TODO
- *
- */
+    \qmlproperty int QAxis::value
+    \readonly
 
+    Holds the value of the axis.
+
+    Note this property is not updated when the axis is disabled.
+*/
+
+/*!
+    Constructs a new QAxis instance with parent \a parent.
+ */
 QAxis::QAxis(Qt3DCore::QNode *parent)
     : Qt3DCore::QNode(*new QAxisPrivate(), parent)
 {
 }
 
+/*! \internal */
 QAxis::~QAxis()
 {
-    QNode::cleanup();
 }
 
-void QAxis::setName(const QString &name)
-{
-    Q_D(QAxis);
-    if (d->m_name != name) {
-        d->m_name = name;
-        emit nameChanged(name);
-    }
-}
+/*!
+  \qmlproperty list<AbstractAxisInput>  Qt3D.Input::Axis::inputs
 
-QString QAxis::name() const
-{
-    Q_D(const QAxis);
-    return d->m_name;
-}
+  the list of AbstractAxisInput that can trigger this Axis.
+*/
 
-void QAxis::addInput(QAxisInput *input)
+/*!
+    QAxis::addInput
+    Adds an \a input for the axis.
+
+    \sa Qt3DInput::QAbstractAxisInput
+ */
+void QAxis::addInput(QAbstractAxisInput *input)
 {
     Q_D(QAxis);
     if (!d->m_inputs.contains(input)) {
@@ -103,45 +111,86 @@ void QAxis::addInput(QAxisInput *input)
         if (!input->parent())
             input->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            Qt3DCore::QScenePropertyChangePtr change(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeAdded, Qt3DCore::QSceneChange::Node, id()));
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(input, &QAxis::removeInput, d->m_inputs);
+
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = Qt3DCore::QPropertyNodeAddedChangePtr::create(id(), input);
             change->setPropertyName("input");
-            change->setValue(QVariant::fromValue(input->id()));
             d->notifyObservers(change);
         }
     }
 }
 
-void QAxis::removeInput(QAxisInput *input)
+/*!
+    \qmlproperty QVariantList Qt3D.Input::Axis::buttons
+
+    The Buttons that can trigger this Action
+*/
+
+/*!
+    QAxis::removeInput
+
+    Removes an \a input from the axis.
+
+    \sa Qt3DInput::QAbstractAxisInput
+ */
+void QAxis::removeInput(QAbstractAxisInput *input)
 {
     Q_D(QAxis);
     if (d->m_inputs.contains(input)) {
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            Qt3DCore::QScenePropertyChangePtr change(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeRemoved, Qt3DCore::QSceneChange::Node, id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = Qt3DCore::QPropertyNodeRemovedChangePtr::create(id(), input);
             change->setPropertyName("input");
-            change->setValue(QVariant::fromValue(input->id()));
             d->notifyObservers(change);
         }
 
         d->m_inputs.removeOne(input);
+
+        // Remove bookkeeping connection
+        d->unregisterDestructionHelper(input);
     }
 }
 
-QVector<QAxisInput *> QAxis::inputs() const
+/*!
+    QAxis::inputs
+
+    \return vector of all inputs added to the axis.
+ */
+QVector<QAbstractAxisInput *> QAxis::inputs() const
 {
     Q_D(const QAxis);
     return d->m_inputs;
 }
 
-void QAxis::copy(const Qt3DCore::QNode *ref)
-{
-    QNode::copy(ref);
-    const QAxis *axis = static_cast<const QAxis *>(ref);
-    d_func()->m_name = axis->d_func()->m_name;
-    Q_FOREACH (QAxisInput *input, axis->inputs())
-        d_func()->m_inputs.append(qobject_cast<QAxisInput *>(QNode::clone(input)));
+/*!
+  \property QAxis::value
 
+  The value of the axis.
+ */
+float QAxis::value() const
+{
+    Q_D(const QAxis);
+    return d->m_value;
+}
+
+/*! \internal */
+void QAxis::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change)
+{
+    Q_D(QAxis);
+    Qt3DCore::QPropertyUpdatedChangePtr e = qSharedPointerCast<Qt3DCore::QPropertyUpdatedChange>(change);
+    if (e->type() == Qt3DCore::PropertyUpdated && e->propertyName() == QByteArrayLiteral("value")) {
+        d->setValue(e->value().toFloat());
+    }
+}
+
+Qt3DCore::QNodeCreatedChangeBasePtr QAxis::createNodeCreationChange() const
+{
+    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QAxisData>::create(this);
+    auto &data = creationChange->data;
+    data.inputIds = qIdsForNodes(inputs());
+    return creationChange;
 }
 
 } // Qt3DInput

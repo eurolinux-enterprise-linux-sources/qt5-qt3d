@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 Dmitrii Kosarev aka Kakadu <kakadu.hafanana@gmail.com>
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -69,7 +61,7 @@ public:
         endInsertRows();
     }
 
-    int rowCount(const QModelIndex &) const
+    int rowCount(const QModelIndex &) const Q_DECL_OVERRIDE
     {
         return items.count();
     }
@@ -79,7 +71,7 @@ public:
         return roles;
     }
 
-    virtual int columnCount(const QModelIndex &) const
+    virtual int columnCount(const QModelIndex &) const Q_DECL_OVERRIDE
     {
         return 1;
     }
@@ -89,7 +81,7 @@ public:
         return rowCount(QModelIndex()) > 0;
     }
 
-    virtual QModelIndex index(int row, int column, const QModelIndex &parent) const
+    virtual QModelIndex index(int row, int column, const QModelIndex &parent) const Q_DECL_OVERRIDE
     {
         Q_UNUSED(column);
         if (row>=0 && row<rowCount(parent))
@@ -98,12 +90,12 @@ public:
             return QModelIndex();
     }
 
-    virtual QModelIndex parent(const QModelIndex &) const
+    virtual QModelIndex parent(const QModelIndex &) const Q_DECL_OVERRIDE
     {
         return QModelIndex();
     }
 
-    QVariant data (const QModelIndex & index, int role) const
+    QVariant data (const QModelIndex & index, int role) const Q_DECL_OVERRIDE
     {
         int row = index.row();
         if ((row<0) || (row>=items.count()))

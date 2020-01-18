@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -36,8 +39,10 @@
 
 #include "qrendertarget.h"
 #include "qrendertarget_p.h"
-#include "qrenderattachment.h"
-#include <Qt3DCore/qscenepropertychange.h>
+#include "qrendertargetoutput.h"
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -45,27 +50,59 @@ using namespace Qt3DCore;
 
 namespace Qt3DRender {
 
+/*!
+    \class Qt3DRender::QRenderTarget
+    \brief The QRenderTarget class encapsulates a target (usually a frame buffer
+    object) which the renderer can render into.
+    \since 5.7
+    \inmodule Qt3DRender
+
+    A Qt3DRender::QRenderTarget comprises of Qt3DRender::QRenderTargetOutput objects,
+    which specify the the buffers the render target is rendering to. The user can
+    specify MRT(Multiple Render Targets) by attaching multiple textures to different
+    attachment points. The results are undefined if the user tries to attach multiple
+    textures to the same attachment point. At render time, only the draw buffers specified
+    in the Qt3DRender::QRenderTargetSelector are used.
+
+ */
+/*!
+    \qmltype RenderTarget
+    \brief The RenderTarget class encapsulates a target (usually a frame buffer
+    object) which the renderer can render into.
+    \since 5.7
+    \inmodule Qt3D.Render
+    \instantiates Qt3DRender::QRenderTarget
+
+    A RenderTarget comprises of RenderTargetOutput objects, which specify the the buffers
+    the render target is rendering to. The user can specify MRT(Multiple Render Targets)
+    by attaching multiple textures to different attachment points. The results are undefined
+    if the user tries to attach multiple textures to the same attachment point. At render
+    time, only the draw buffers specified in the RenderTargetSelector are used.
+ */
+
+/*!
+    \qmlproperty list<RenderTargetOutput> RenderTarget::attachments
+    Holds the attachments for the RenderTarget.
+*/
+
+/*! \internal */
 QRenderTargetPrivate::QRenderTargetPrivate()
     : QComponentPrivate()
 {
 }
 
-void QRenderTarget::copy(const QNode *ref)
-{
-    QNode::copy(ref);
-    const QRenderTarget *other = static_cast<const QRenderTarget*>(ref);
-    Q_FOREACH (QRenderAttachment *attachment, other->d_func()->m_attachments)
-        addAttachment(qobject_cast<QRenderAttachment *>(QNode::clone(attachment)));
-}
-
+/*!
+    The constructor creates a new QRenderTarget::QRenderTarget instance with
+    the specified \a parent.
+ */
 QRenderTarget::QRenderTarget(QNode *parent)
     : QComponent(*new QRenderTargetPrivate, parent)
 {
 }
 
+/*! \internal */
 QRenderTarget::~QRenderTarget()
 {
-    QNode::cleanup();
 }
 
 /*! \internal */
@@ -74,41 +111,61 @@ QRenderTarget::QRenderTarget(QRenderTargetPrivate &dd, QNode *parent)
 {
 }
 
-void QRenderTarget::addAttachment(QRenderAttachment *attachment)
+/*!
+    Adds a chosen output via \a output.
+ */
+void QRenderTarget::addOutput(QRenderTargetOutput *output)
 {
     Q_D(QRenderTarget);
-    if (!d->m_attachments.contains(attachment)) {
-        d->m_attachments.append(attachment);
+    if (output && !d->m_outputs.contains(output)) {
+        d->m_outputs.append(output);
 
-        if (!attachment->parent())
-            attachment->setParent(this);
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(output, &QRenderTarget::removeOutput, d->m_outputs);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            QScenePropertyChangePtr change(new QScenePropertyChange(NodeAdded, QSceneChange::Node, id()));
-            change->setPropertyName("attachment");
-            change->setValue(QVariant::fromValue(attachment->id()));
+        if (!output->parent())
+            output->setParent(this);
+
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = QPropertyNodeAddedChangePtr::create(id(), output);
+            change->setPropertyName("output");
             d->notifyObservers(change);
         }
     }
 }
 
-void QRenderTarget::removeAttachment(QRenderAttachment *attachment)
+/*!
+    Removes a chosen output via \a output.
+ */
+void QRenderTarget::removeOutput(QRenderTargetOutput *output)
 {
     Q_D(QRenderTarget);
 
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, id()));
-        change->setPropertyName("attachment");
-        change->setValue(QVariant::fromValue(attachment->id()));
+    if (output && d->m_changeArbiter != nullptr) {
+        const auto change = QPropertyNodeRemovedChangePtr::create(id(), output);
+        change->setPropertyName("output");
         d->notifyObservers(change);
     }
-    d->m_attachments.removeOne(attachment);
+    d->m_outputs.removeOne(output);
+    // Remove bookkeeping connection
+    d->unregisterDestructionHelper(output);
 }
 
-QList<QRenderAttachment *> QRenderTarget::attachments() const
+/*!
+    \return the chosen outputs.
+ */
+QVector<QRenderTargetOutput *> QRenderTarget::outputs() const
 {
     Q_D(const QRenderTarget);
-    return d->m_attachments;
+    return d->m_outputs;
+}
+
+Qt3DCore::QNodeCreatedChangeBasePtr QRenderTarget::createNodeCreationChange() const
+{
+    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QRenderTargetData>::create(this);
+    auto &data = creationChange->data;
+    data.outputIds = qIdsForNodes(outputs());
+    return creationChange;
 }
 
 } // namespace Qt3DRender

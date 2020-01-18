@@ -1,86 +1,169 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qlogicaldevice.h"
-#include <Qt3DCore/private/qnode_p.h>
+#include "qlogicaldevice_p.h"
+
+#include <Qt3DCore/qnodecreatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <Qt3DInput/qaction.h>
 #include <Qt3DInput/qaxis.h>
-#include <Qt3DCore/qscenepropertychange.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DInput {
 
-class QLogicalDevicePrivate : public Qt3DCore::QNodePrivate
+QLogicalDevicePrivate::QLogicalDevicePrivate()
+    : Qt3DCore::QComponentPrivate()
 {
-public:
-    QLogicalDevicePrivate()
-        : Qt3DCore::QNodePrivate()
-    {}
+}
 
-    QVector<QAction *> m_actions;
-    QVector<QAxis *> m_axes;
-};
+QLogicalDevicePrivate::~QLogicalDevicePrivate()
+{
+}
 
 /*!
- * \qmltype LogicalDevice
- * \inqmlmodule Qt3D.Input
- * \since 5.5
- * \TODO
- *
- */
+    \class Qt3DInput::QLogicalDevice
+    \inmodule Qt3DInput
+    \inherits Qt3DCore::QNode
+    \brief QLogicalDevice allows the user to define a set of actions that they wish to use within an application.
+
+    \since 5.6
+*/
 
 /*!
- * \class Qt3DInput::QLogicalDevice
- * \inmodule Qt3DInput
- * \since 5.5
- * \TODO
- *
- */
+    \qmltype LogicalDevice
+    \inqmlmodule Qt3D.Input
+    \instantiates Qt3DInput::QLogicalDevice
+    \brief QML frontend for the Qt3DInput::QLogicalDevice C++ class.
 
+    Allows the user to define a set of actions that they wish to use within an application.
+
+    \qml
+    LogicalDevice {
+        id: keyboardLogicalDevice
+
+        actions: [
+            Action {
+                name: "fire"
+                inputs: [
+                    ActionInput {
+                        sourceDevice: keyboardSourceDevice
+                        keys: [Qt.Key_Space]
+                    },
+                    InputChord {
+                        tolerance: 10
+                        inputs: [
+                            ActionInput {
+                                sourceDevice: keyboardSourceDevice
+                                keys: [Qt.Key_A]
+                            },
+                            ActionInput {
+                                sourceDevice: keyboardSourceDevice
+                                keys: [Qt.Key_S]
+                            }
+                        ]
+                    }
+                ]
+            },
+            Action {
+                name: "reload"
+                inputs: [
+                    ActionInput {
+                        sourceDevice: keyboardSourceDevice
+                        keys: [Qt.Key_Alt]
+                    }
+                ]
+            },
+            Action {
+                name: "combo"
+                inputs: [
+                    InputSequence {
+                        interval: 1000
+                        timeout: 10000
+                        inputs: [
+                            ActionInput {
+                                sourceDevice: keyboardSourceDevice
+                                keys: [Qt.Key_G]
+                            },
+                            ActionInput {
+                                sourceDevice: keyboardSourceDevice
+                                keys: [Qt.Key_D]
+                            },
+                            ActionInput {
+                                sourceDevice: keyboardSourceDevice
+                                keys: [Qt.Key_J]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    \endqml
+
+    \since 5.6
+*/
+
+/*!
+    Constructs a new QLogicalDevice instance with parent \a parent.
+ */
 QLogicalDevice::QLogicalDevice(Qt3DCore::QNode *parent)
-    : Qt3DCore::QNode(*new QLogicalDevicePrivate(), parent)
+    : Qt3DCore::QComponent(*new QLogicalDevicePrivate(), parent)
 {
 }
 
 QLogicalDevice::~QLogicalDevice()
 {
-    QNode::cleanup();
 }
 
+/*!
+  \qmlproperty list<Action> Qt3D.Input::LogicalDevice::actions
+
+  The actions used by this Logical Device
+*/
+
+/*!
+    Add an \a action to the list of actions.
+ */
 void QLogicalDevice::addAction(QAction *action)
 {
     Q_D(QLogicalDevice);
@@ -90,37 +173,56 @@ void QLogicalDevice::addAction(QAction *action)
         if (!action->parent())
             action->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            Qt3DCore::QScenePropertyChangePtr change(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeAdded, Qt3DCore::QSceneChange::Node, id()));
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(action, &QLogicalDevice::removeAction, d->m_actions);
+
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = Qt3DCore::QPropertyNodeAddedChangePtr::create(id(), action);
             change->setPropertyName("action");
-            change->setValue(QVariant::fromValue(action->id()));
             d->notifyObservers(change);
         }
     }
 }
 
+/*!
+    Remove an \a action from the list of actions.
+ */
 void QLogicalDevice::removeAction(QAction *action)
 {
     Q_D(QLogicalDevice);
     if (d->m_actions.contains(action)) {
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            Qt3DCore::QScenePropertyChangePtr change(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeRemoved, Qt3DCore::QSceneChange::Node, id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = Qt3DCore::QPropertyNodeRemovedChangePtr::create(id(), action);
             change->setPropertyName("action");
-            change->setValue(QVariant::fromValue(action->id()));
             d->notifyObservers(change);
         }
 
         d->m_actions.removeOne(action);
+
+        // Remove bookkeeping connection
+        d->unregisterDestructionHelper(action);
     }
 }
 
+/*!
+    Returns the list of actions.
+ */
 QVector<QAction *> QLogicalDevice::actions() const
 {
     Q_D(const QLogicalDevice);
     return d->m_actions;
 }
 
+/*!
+  \qmlproperty list<Axis> Qt3D.Input::LogicalDevice::axis
+
+  The axis used by this Logical Device
+*/
+
+/*!
+    Add an \a axis to the list of axis.
+ */
 void QLogicalDevice::addAxis(QAxis *axis)
 {
     Q_D(QLogicalDevice);
@@ -131,44 +233,53 @@ void QLogicalDevice::addAxis(QAxis *axis)
         if (!axis->parent())
             axis->setParent(this);
 
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            Qt3DCore::QScenePropertyChangePtr change(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeAdded, Qt3DCore::QSceneChange::Node, id()));
+        // Ensures proper bookkeeping
+        d->registerDestructionHelper(axis, &QLogicalDevice::removeAxis, d->m_axes);
+
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = Qt3DCore::QPropertyNodeAddedChangePtr::create(id(), axis);
             change->setPropertyName("axis");
-            change->setValue(QVariant::fromValue(axis->id()));
             d->notifyObservers(change);
         }
     }
 }
 
+/*!
+    Remove an \a axis drom the list of axis.
+ */
 void QLogicalDevice::removeAxis(QAxis *axis)
 {
     Q_D(QLogicalDevice);
     if (d->m_axes.contains(axis)) {
-        if (d->m_changeArbiter != Q_NULLPTR) {
-            Qt3DCore::QScenePropertyChangePtr change(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeRemoved, Qt3DCore::QSceneChange::Node, id()));
+        if (d->m_changeArbiter != nullptr) {
+            const auto change = Qt3DCore::QPropertyNodeRemovedChangePtr::create(id(), axis);
             change->setPropertyName("axis");
-            change->setValue(QVariant::fromValue(axis->id()));
             d->notifyObservers(change);
         }
 
         d->m_axes.removeOne(axis);
+
+        // Remove bookkeeping connection
+        d->unregisterDestructionHelper(axis);
     }
 }
 
+/*!
+    Returns the list of axis.
+ */
 QVector<QAxis *> QLogicalDevice::axes() const
 {
     Q_D(const QLogicalDevice);
     return d->m_axes;
 }
 
-void QLogicalDevice::copy(const Qt3DCore::QNode *ref)
+Qt3DCore::QNodeCreatedChangeBasePtr QLogicalDevice::createNodeCreationChange() const
 {
-    QNode::copy(ref);
-    const QLogicalDevice *device = static_cast<const QLogicalDevice *>(ref);
-    Q_FOREACH (QAction *action, device->actions())
-        d_func()->m_actions.push_back(qobject_cast<QAction *>(QNode::clone(action)));
-    Q_FOREACH (QAxis *axis, device->axes())
-        d_func()->m_axes.push_back(qobject_cast<QAxis *>(QNode::clone(axis)));
+    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QLogicalDeviceData>::create(this);
+    auto &data = creationChange->data;
+    data.actionIds = qIdsForNodes(actions());
+    data.axisIds = qIdsForNodes(axes());
+    return creationChange;
 }
 
 } // Qt3DInput

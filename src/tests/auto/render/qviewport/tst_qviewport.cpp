@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -37,146 +29,144 @@
 #include <QtTest/QTest>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
+#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 
 #include <Qt3DRender/qviewport.h>
+#include <Qt3DRender/private/qviewport_p.h>
 
 #include "testpostmanarbiter.h"
 
-// We need to call QNode::clone which is protected
-// So we sublcass QNode instead of QObject
-class tst_QViewport: public Qt3DCore::QNode
+class tst_QViewport: public QObject
 {
     Q_OBJECT
-public:
-    ~tst_QViewport()
-    {
-        QNode::cleanup();
-    }
 
 private Q_SLOTS:
 
     void checkCloning_data()
     {
         QTest::addColumn<Qt3DRender::QViewport *>("viewport");
-        QTest::addColumn<QRectF>("rect");
-        QTest::addColumn<QColor>("color");
+        QTest::addColumn<QRectF>("normalizedRect");
+        QTest::addColumn<float>("gamma");
 
         Qt3DRender::QViewport *defaultConstructed = new Qt3DRender::QViewport();
-        QTest::newRow("defaultConstructed") << defaultConstructed << QRectF(0.0f, 0.0f, 1.0f, 1.0f) << QColor();
+        QTest::newRow("defaultConstructed") << defaultConstructed << QRectF(0.0f, 0.0f, 1.0f, 1.0f) << 2.2f;
 
         Qt3DRender::QViewport *smallGreenViewport = new Qt3DRender::QViewport();
-        smallGreenViewport->setRect(QRectF(0.2f, 0.2f, 0.6f, 0.6f));
-        smallGreenViewport->setClearColor(QColor(Qt::green));
-        QTest::newRow("smallGreenViewport") << smallGreenViewport << QRectF(0.2f, 0.2f, 0.6f, 0.6f) << QColor(Qt::green);
-
+        smallGreenViewport->setNormalizedRect(QRectF(0.2f, 0.2f, 0.6f, 0.6f));
+        smallGreenViewport->setGamma(1.8f);
+        QTest::newRow("smallGreenViewport") << smallGreenViewport << QRectF(0.2f, 0.2f, 0.6f, 0.6f) << 1.8f;
     }
 
     void checkCloning()
     {
         // GIVEN
         QFETCH(Qt3DRender::QViewport *, viewport);
-        QFETCH(QRectF, rect);
-        QFETCH(QColor, color);
+        QFETCH(QRectF, normalizedRect);
+        QFETCH(float, gamma);
 
         // THEN
-        QCOMPARE(viewport->rect(), rect);
-        QCOMPARE(viewport->clearColor(), color);
+        QCOMPARE(viewport->normalizedRect(), normalizedRect);
+        QCOMPARE(viewport->gamma(), gamma);
 
         // WHEN
-        Qt3DRender::QViewport *clone = static_cast<Qt3DRender::QViewport *>(QNode::clone(viewport));
+        Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(viewport);
+        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = creationChangeGenerator.creationChanges();
 
         // THEN
-        QVERIFY(clone != Q_NULLPTR);
-        QCOMPARE(viewport->id(), clone->id());
-        QCOMPARE(viewport->rect(), clone->rect());
-        QCOMPARE(viewport->clearColor(), clone->clearColor());
+        QCOMPARE(creationChanges.size(), 1);
+
+        const Qt3DCore::QNodeCreatedChangePtr<Qt3DRender::QViewportData> creationChangeData =
+                qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QViewportData>>(creationChanges.first());
+        const Qt3DRender::QViewportData &cloneData = creationChangeData->data;
+
+        QCOMPARE(viewport->id(), creationChangeData->subjectId());
+        QCOMPARE(viewport->isEnabled(), creationChangeData->isNodeEnabled());
+        QCOMPARE(viewport->metaObject(), creationChangeData->metaObject());
+        QCOMPARE(viewport->normalizedRect(), cloneData.normalizedRect);
+        QCOMPARE(viewport->gamma(), cloneData.gamma);
 
         delete viewport;
-        delete clone;
     }
 
     void checkPropertyUpdates()
     {
         // GIVEN
+        TestArbiter arbiter;
         QScopedPointer<Qt3DRender::QViewport> viewport(new Qt3DRender::QViewport());
-        TestArbiter arbiter(viewport.data());
+        arbiter.setArbiterOnNode(viewport.data());
 
-        // WHEN
-        viewport->setClearColor(Qt::red);
-        QCoreApplication::processEvents();
+        {
+            // WHEN
+            viewport->setNormalizedRect(QRectF(0.5f, 0.5f, 1.0f, 1.0f));
+            QCoreApplication::processEvents();
 
-        // THEN
-        QCOMPARE(arbiter.events.size(), 1);
-        Qt3DCore::QScenePropertyChangePtr change = arbiter.events.first().staticCast<Qt3DCore::QScenePropertyChange>();
-        QCOMPARE(change->propertyName(), "clearColor");
-        QCOMPARE(change->subjectId(), viewport->id());
-        QCOMPARE(change->value().value<QColor>(), QColor(Qt::red));
-        QCOMPARE(change->type(), Qt3DCore::NodeUpdated);
+            // THEN
+            QCOMPARE(arbiter.events.size(), 1);
+            Qt3DCore::QPropertyUpdatedChangePtr change = arbiter.events.first().staticCast<Qt3DCore::QPropertyUpdatedChange>();
+            QCOMPARE(change->propertyName(), "normalizedRect");
+            QCOMPARE(change->subjectId(), viewport->id());
+            QCOMPARE(change->value().value<QRectF>(), QRectF(0.5f, 0.5f, 1.0f, 1.0f));
+            QCOMPARE(change->type(), Qt3DCore::PropertyUpdated);
 
-        arbiter.events.clear();
+            arbiter.events.clear();
 
-        // WHEN
-        viewport->setClearColor(Qt::red);
-        QCoreApplication::processEvents();
+            // WHEN
+            viewport->setNormalizedRect(QRectF(0.5f, 0.5f, 1.0f, 1.0f));
+            QCoreApplication::processEvents();
 
-        // THEN
-        QCOMPARE(arbiter.events.size(), 0);
+            // THEN
+            QCOMPARE(arbiter.events.size(), 0);
 
-        // WHEN
-        viewport->setClearColor(Qt::blue);
-        QCoreApplication::processEvents();
+            // WHEN
+            viewport->setNormalizedRect(QRectF(0.0f, 0.0f, 1.0f, 1.0f));
+            QCoreApplication::processEvents();
 
-        // THEN
-        QCOMPARE(arbiter.events.size(), 1);
-        change = arbiter.events.first().staticCast<Qt3DCore::QScenePropertyChange>();
-        QCOMPARE(change->propertyName(), "clearColor");
-        QCOMPARE(change->subjectId(), viewport->id());
-        QCOMPARE(change->value().value<QColor>(), QColor(Qt::blue));
-        QCOMPARE(change->type(), Qt3DCore::NodeUpdated);
-
-        arbiter.events.clear();
-
-        // WHEN
-        viewport->setRect(QRectF(0.5f, 0.5f, 1.0f, 1.0f));
-        QCoreApplication::processEvents();
-
-        // THEN
-        QCOMPARE(arbiter.events.size(), 1);
-        change = arbiter.events.first().staticCast<Qt3DCore::QScenePropertyChange>();
-        QCOMPARE(change->propertyName(), "rect");
-        QCOMPARE(change->subjectId(), viewport->id());
-        QCOMPARE(change->value().value<QRectF>(), QRectF(0.5f, 0.5f, 1.0f, 1.0f));
-        QCOMPARE(change->type(), Qt3DCore::NodeUpdated);
+            // THEN
+            QCOMPARE(arbiter.events.size(), 1);
+            change = arbiter.events.first().staticCast<Qt3DCore::QPropertyUpdatedChange>();
+            QCOMPARE(change->propertyName(), "normalizedRect");
+            QCOMPARE(change->subjectId(), viewport->id());
+            QCOMPARE(change->value().value<QRectF>(), QRectF(0.0f, 0.0f, 1.0f, 1.0f));
+            QCOMPARE(change->type(), Qt3DCore::PropertyUpdated);
+        }
 
         arbiter.events.clear();
 
-        // WHEN
-        viewport->setRect(QRectF(0.5f, 0.5f, 1.0f, 1.0f));
-        QCoreApplication::processEvents();
+        {
+            // WHEN
+            viewport->setGamma(1.8f);
+            QCoreApplication::processEvents();
 
-        // THEN
-        QCOMPARE(arbiter.events.size(), 0);
+            // THEN
+            QCOMPARE(arbiter.events.size(), 1);
+            Qt3DCore::QPropertyUpdatedChangePtr change = arbiter.events.first().staticCast<Qt3DCore::QPropertyUpdatedChange>();
+            QCOMPARE(change->propertyName(), "gamma");
+            QCOMPARE(change->subjectId(), viewport->id());
+            QCOMPARE(change->value().toFloat(), 1.8f);
+            QCOMPARE(change->type(), Qt3DCore::PropertyUpdated);
 
-        // WHEN
-        viewport->setRect(QRectF(0.0f, 0.0f, 1.0f, 1.0f));
-        QCoreApplication::processEvents();
+            arbiter.events.clear();
 
-        // THEN
-        QCOMPARE(arbiter.events.size(), 1);
-        change = arbiter.events.first().staticCast<Qt3DCore::QScenePropertyChange>();
-        QCOMPARE(change->propertyName(), "rect");
-        QCOMPARE(change->subjectId(), viewport->id());
-        QCOMPARE(change->value().value<QRectF>(), QRectF(0.0f, 0.0f, 1.0f, 1.0f));
-        QCOMPARE(change->type(), Qt3DCore::NodeUpdated);
+            // WHEN
+            viewport->setGamma(1.8f);
+            QCoreApplication::processEvents();
 
+            // THEN
+            QCOMPARE(arbiter.events.size(), 0);
+
+            // WHEN
+            viewport->setGamma(2.0f);
+            QCoreApplication::processEvents();
+
+            // THEN
+            QCOMPARE(arbiter.events.size(), 1);
+            change = arbiter.events.first().staticCast<Qt3DCore::QPropertyUpdatedChange>();
+            QCOMPARE(change->propertyName(), "gamma");
+            QCOMPARE(change->subjectId(), viewport->id());
+            QCOMPARE(change->value().toFloat(), 2.0f);
+            QCOMPARE(change->type(), Qt3DCore::PropertyUpdated);
+        }
     }
-
-protected:
-    Qt3DCore::QNode *doClone() const Q_DECL_OVERRIDE
-    {
-        return Q_NULLPTR;
-    }
-
 };
 
 QTEST_MAIN(tst_QViewport)

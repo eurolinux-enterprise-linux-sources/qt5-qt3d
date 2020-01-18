@@ -1,40 +1,44 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qgraphicsapifilter.h"
+#include "qgraphicsapifilter_p.h"
 #include "private/qobject_p.h"
 #include <QOpenGLContext>
 
@@ -42,32 +46,72 @@ QT_BEGIN_NAMESPACE
 
 namespace Qt3DRender {
 
-class QGraphicsApiFilterPrivate : public QObjectPrivate
+GraphicsApiFilterData::GraphicsApiFilterData()
+    : m_api(QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL ? QGraphicsApiFilter::OpenGL : QGraphicsApiFilter::OpenGLES)
+    , m_profile(QGraphicsApiFilter::NoProfile) // matches all (no profile, core, compat)
+    , m_minor(0)
+    , m_major(0)
+{}
+
+bool GraphicsApiFilterData::operator ==(const GraphicsApiFilterData &other) const
 {
-public:
-    QGraphicsApiFilterPrivate()
-        : QObjectPrivate()
-        , m_api(QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL ? QGraphicsApiFilter::OpenGL : QGraphicsApiFilter::OpenGLES)
-        , m_profile(QGraphicsApiFilter::NoProfile) // matches all (no profile, core, compat)
-        , m_minor(0)
-        , m_major(0)
-    {
+    // Check API
+    if (other.m_api != m_api)
+        return false;
+
+    // Check versions
+    const bool versionsCompatible = other.m_major < m_major
+            || (other.m_major == m_major && other.m_minor <= m_minor);
+    if (!versionsCompatible)
+        return false;
+
+    // Check profiles if requiring OpenGL (profiles not relevant for OpenGL ES)
+    if (other.m_api == QGraphicsApiFilter::OpenGL) {
+        const bool profilesCompatible = m_profile != QGraphicsApiFilter::CoreProfile
+                || other.m_profile == m_profile;
+        if (!profilesCompatible)
+            return false;
     }
 
-    Q_DECLARE_PUBLIC(QGraphicsApiFilter)
-    QGraphicsApiFilter::Api m_api;
-    QGraphicsApiFilter::Profile m_profile;
-    int m_minor;
-    int m_major;
-    QStringList m_extensions;
-    QString m_vendor;
-};
+    // Check extensions
+    for (const QString &neededExt : other.m_extensions) {
+        if (!m_extensions.contains(neededExt))
+            return false;
+    }
+
+    // Check vendor
+    if (!other.m_vendor.isEmpty())
+        return (other.m_vendor == m_vendor);
+
+    // If we get here everything looks good :)
+    return true;
+}
+
+bool GraphicsApiFilterData::operator <(const GraphicsApiFilterData &other) const
+{
+    if (this->m_major > other.m_major)
+        return false;
+    if (this->m_major == other.m_major &&
+        this->m_minor > other.m_minor)
+        return false;
+    return true;
+}
+
+bool GraphicsApiFilterData::operator !=(const GraphicsApiFilterData &other) const
+{
+    return !(*this == other);
+}
+
+QGraphicsApiFilterPrivate *QGraphicsApiFilterPrivate::get(QGraphicsApiFilter *q)
+{
+    return q->d_func();
+}
 
 /*!
     \class Qt3DRender::QGraphicsApiFilter
     \inmodule Qt3DRender
     \since 5.5
-    \brief The QGraphicsApiFilter class provides ...
+    \brief The QGraphicsApiFilter class identifies the API required for the attached QTechnique
 */
 
 /*!
@@ -76,7 +120,16 @@ public:
     \inherits QtObject
     \inqmlmodule Qt3D.Render
     \since 5.5
-    \brief For OpenGL ...
+    \brief For OpenGL identifies the API required for the attached technique
+*/
+
+/*!
+    \enum QGraphicsApiFilter::OpenGLProfile
+
+    This enum identifies the type of profile required
+    \value NoProfile
+    \value CoreProfile
+    \value CompatibilityProfile
 */
 
 /*! \fn Qt3DRender::QGraphicsApiFilter::QGraphicsApiFilter(QObject *parent)
@@ -87,18 +140,9 @@ QGraphicsApiFilter::QGraphicsApiFilter(QObject *parent)
 {
 }
 
-/*! \fn void Qt3DRender::QGraphicsApiFilter::copy(const QGraphicsApiFilter &ref)
-  Copies the \a ref instance into this one.
- */
-void QGraphicsApiFilter::copy(const QGraphicsApiFilter &ref)
+/*! \internal */
+QGraphicsApiFilter::~QGraphicsApiFilter()
 {
-    Q_D(QGraphicsApiFilter);
-    d->m_api = ref.api();
-    d->m_profile = ref.profile();
-    d->m_major = ref.majorVersion();
-    d->m_minor = ref.minorVersion();
-    d->m_extensions = ref.extensions();
-    d->m_vendor = ref.vendor();
 }
 
 /*!
@@ -134,7 +178,7 @@ void QGraphicsApiFilter::copy(const QGraphicsApiFilter &ref)
 QGraphicsApiFilter::Api QGraphicsApiFilter::api() const
 {
     Q_D(const QGraphicsApiFilter);
-    return d->m_api;
+    return d->m_data.m_api;
 }
 
 /*!
@@ -150,10 +194,10 @@ QGraphicsApiFilter::Api QGraphicsApiFilter::api() const
   \value CompatibilityProfile QSurfaceFormat::CompatibilityProfile
 */
 
-QGraphicsApiFilter::Profile QGraphicsApiFilter::profile() const
+QGraphicsApiFilter::OpenGLProfile QGraphicsApiFilter::profile() const
 {
     Q_D(const QGraphicsApiFilter);
-    return d->m_profile;
+    return d->m_data.m_profile;
 }
 
 /*!
@@ -169,7 +213,7 @@ QGraphicsApiFilter::Profile QGraphicsApiFilter::profile() const
 int QGraphicsApiFilter::minorVersion() const
 {
     Q_D(const QGraphicsApiFilter);
-    return d->m_minor;
+    return d->m_data.m_minor;
 }
 
 /*!
@@ -185,7 +229,7 @@ int QGraphicsApiFilter::minorVersion() const
 int QGraphicsApiFilter::majorVersion() const
 {
     Q_D(const QGraphicsApiFilter);
-    return d->m_major;
+    return d->m_data.m_major;
 }
 
 /*!
@@ -201,7 +245,7 @@ int QGraphicsApiFilter::majorVersion() const
 QStringList QGraphicsApiFilter::extensions() const
 {
     Q_D(const QGraphicsApiFilter);
-    return d->m_extensions;
+    return d->m_data.m_extensions;
 }
 
 /*!
@@ -217,24 +261,24 @@ QStringList QGraphicsApiFilter::extensions() const
 QString QGraphicsApiFilter::vendor() const
 {
     Q_D(const QGraphicsApiFilter);
-    return d->m_vendor;
+    return d->m_data.m_vendor;
 }
 
 void QGraphicsApiFilter::setApi(QGraphicsApiFilter::Api api)
 {
     Q_D(QGraphicsApiFilter);
-    if (d->m_api != api) {
-        d->m_api = api;
+    if (d->m_data.m_api != api) {
+        d->m_data.m_api = api;
         emit apiChanged(api);
         emit graphicsApiFilterChanged();
     }
 }
 
-void QGraphicsApiFilter::setProfile(QGraphicsApiFilter::Profile profile)
+void QGraphicsApiFilter::setProfile(QGraphicsApiFilter::OpenGLProfile profile)
 {
     Q_D(QGraphicsApiFilter);
-    if (d->m_profile != profile) {
-        d->m_profile = profile;
+    if (d->m_data.m_profile != profile) {
+        d->m_data.m_profile = profile;
         emit profileChanged(profile);
         emit graphicsApiFilterChanged();
     }
@@ -243,8 +287,8 @@ void QGraphicsApiFilter::setProfile(QGraphicsApiFilter::Profile profile)
 void QGraphicsApiFilter::setMinorVersion(int minorVersion)
 {
     Q_D(QGraphicsApiFilter);
-    if (minorVersion != d->m_minor) {
-        d->m_minor = minorVersion;
+    if (minorVersion != d->m_data.m_minor) {
+        d->m_data.m_minor = minorVersion;
         emit minorVersionChanged(minorVersion);
         emit graphicsApiFilterChanged();
     }
@@ -253,8 +297,8 @@ void QGraphicsApiFilter::setMinorVersion(int minorVersion)
 void QGraphicsApiFilter::setMajorVersion(int majorVersion)
 {
     Q_D(QGraphicsApiFilter);
-    if (d->m_major != majorVersion) {
-        d->m_major = majorVersion;
+    if (d->m_data.m_major != majorVersion) {
+        d->m_data.m_major = majorVersion;
         emit majorVersionChanged(majorVersion);
         emit graphicsApiFilterChanged();
     }
@@ -263,8 +307,8 @@ void QGraphicsApiFilter::setMajorVersion(int majorVersion)
 void QGraphicsApiFilter::setExtensions(const QStringList &extensions)
 {
     Q_D(QGraphicsApiFilter);
-    if (d->m_extensions != extensions) {
-        d->m_extensions = extensions;
+    if (d->m_data.m_extensions != extensions) {
+        d->m_data.m_extensions = extensions;
         emit extensionsChanged(extensions);
         emit graphicsApiFilterChanged();
     }
@@ -273,8 +317,8 @@ void QGraphicsApiFilter::setExtensions(const QStringList &extensions)
 void QGraphicsApiFilter::setVendor(const QString &vendor)
 {
     Q_D(QGraphicsApiFilter);
-    if (d->m_vendor != vendor) {
-        d->m_vendor = vendor;
+    if (d->m_data.m_vendor != vendor) {
+        d->m_data.m_vendor = vendor;
         emit vendorChanged(vendor);
         emit graphicsApiFilterChanged();
     }
@@ -287,20 +331,8 @@ void QGraphicsApiFilter::setVendor(const QString &vendor)
  */
 bool operator ==(const QGraphicsApiFilter &reference, const QGraphicsApiFilter &sample)
 {
-    if (sample.api() == reference.api()
-        && sample.profile() <= reference.profile()
-        && (sample.majorVersion() < reference.majorVersion()
-            || (sample.majorVersion() == reference.majorVersion() && sample.minorVersion() <= reference.minorVersion()))) {
-        Q_FOREACH (const QString &neededExt, sample.extensions())
-            if (!reference.extensions().contains(neededExt))
-                return false;
-        // If a vendor name was specified in sample, we perform comparison,
-        // otherwise we assume the vendor name doesn't matter
-        if (!sample.vendor().isEmpty())
-            return (sample.vendor() == reference.vendor());
-        return true;
-    }
-    return false;
+    return QGraphicsApiFilterPrivate::get(const_cast<QGraphicsApiFilter *>(&reference))->m_data ==
+            QGraphicsApiFilterPrivate::get(const_cast<QGraphicsApiFilter *>(&sample))->m_data;
 }
 
 /*! \fn bool Qt3DRender::operator !=(const QGraphicsApiFilter &reference, const QGraphicsApiFilter &sample)

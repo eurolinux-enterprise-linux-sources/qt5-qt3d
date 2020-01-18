@@ -1,35 +1,38 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
+** Copyright (C) 2016 The Qt Company Ltd.
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -58,7 +61,7 @@
     \l qmake \c .pro file:
 
     \badcode
-    QT += 3dcore 3drender 3dinput 3dlogic
+    QT += 3dcore 3drender 3dinput 3dlogic 3dextras 3danimation
     \endcode
 
     To include the definitions of the modules' classes, use the following
@@ -69,12 +72,14 @@
     #include <Qt3DRender>
     #include <Qt3DInput>
     #include <Qt3DLogic>
+    #include <Qt3DExtras>
+    #include <Qt3DAnimation>
     \endcode
 
     A Qt Quick application requires also additional dependencies:
 
     \badcode
-    QT += 3dcore 3drenderer 3dinput qml quick 3dquick
+    QT += 3dcore 3drender 3dinput 3dlogic 3dextras qml quick 3dquick 3danimation
     \endcode
 
     \section1 Overview
@@ -93,7 +98,7 @@
 
     \section1 Qt 3D Platform Support
 
-    In this Technology Preview Qt 3D has the following support for platforms:
+    Qt 3D has the following support for platforms:
 
     \list
         \li Microsoft Windows (win32) - Supported
@@ -101,8 +106,20 @@
         \li \macos - Supported although there may be some retina scaling issues
         \li Android - Supported
         \li Embedded Linux - Supported
-        \li iOS - Not supported yet (coming in Qt 5.6)
+        \li iOS - Supported since (Qt 5.7)
         \li WinRT - Not supported yet
-        \li Windows CE - Compiles but not tested
     \endlist
+
+    \section1 Licenses and Attributions
+
+    Qt 3D is available under commercial licenses from \l{The Qt Company}.
+    In addition, it is available under the
+    \l{GNU Lesser General Public License, version 3}, or
+    the \l{GNU General Public License, version 2}.
+    See \l{Qt Licensing} for further details.
+
+    Furthermore Qt 3D contains third party
+    modules under following permissive licenses:
+
+    \generatelist{groupsbymodule attributions-qt3d}
 */

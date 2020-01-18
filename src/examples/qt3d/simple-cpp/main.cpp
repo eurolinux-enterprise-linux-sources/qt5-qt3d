@@ -1,34 +1,48 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:BSD$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** BSD License Usage
+** Alternatively, you may use this file under the terms of the BSD license
+** as follows:
 **
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** "Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions are
+** met:
+**   * Redistributions of source code must retain the above copyright
+**     notice, this list of conditions and the following disclaimer.
+**   * Redistributions in binary form must reproduce the above copyright
+**     notice, this list of conditions and the following disclaimer in
+**     the documentation and/or other materials provided with the
+**     distribution.
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
+**     from this software without specific prior written permission.
+**
+**
+** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 **
 ** $QT_END_LICENSE$
 **
@@ -37,119 +51,37 @@
 #include <QGuiApplication>
 
 #include <Qt3DCore/QEntity>
-#include <Qt3DCore/QCamera>
-#include <Qt3DCore/QCameraLens>
+#include <Qt3DRender/QCamera>
+#include <Qt3DRender/QCameraLens>
 #include <Qt3DCore/QTransform>
 #include <Qt3DCore/QAspectEngine>
 
 #include <Qt3DInput/QInputAspect>
 
 #include <Qt3DRender/QRenderAspect>
-#include <Qt3DRender/QFrameGraph>
-#include <Qt3DRender/QForwardRenderer>
-#include <Qt3DRender/QPhongMaterial>
-#include <Qt3DRender/QCylinderMesh>
-#include <Qt3DRender/QSphereMesh>
-#include <Qt3DRender/QTorusMesh>
-#include <Qt3DRender/QWindow>
+#include <Qt3DExtras/QForwardRenderer>
+#include <Qt3DExtras/QPhongMaterial>
+#include <Qt3DExtras/QCylinderMesh>
+#include <Qt3DExtras/QSphereMesh>
+#include <Qt3DExtras/QTorusMesh>
 
 #include <QPropertyAnimation>
 
-class OrbitTransformController : public QObject
+#include "qt3dwindow.h"
+#include "orbittransformcontroller.h"
+#include "qorbitcameracontroller.h"
+
+Qt3DCore::QEntity *createScene()
 {
-    Q_OBJECT
-    Q_PROPERTY(Qt3DCore::QTransform* target READ target WRITE setTarget NOTIFY targetChanged)
-    Q_PROPERTY(float radius READ radius WRITE setRadius NOTIFY radiusChanged)
-    Q_PROPERTY(float angle READ angle WRITE setAngle NOTIFY angleChanged)
-
-public:
-    OrbitTransformController(QObject *parent = 0)
-        : QObject(parent)
-        , m_target(Q_NULLPTR)
-        , m_matrix()
-        , m_radius(1.0f)
-        , m_angle(0.0f)
-    {
-    }
-
-    void setTarget(Qt3DCore::QTransform *target)
-    {
-        if (m_target != target) {
-            m_target = target;
-            emit targetChanged();
-        }
-    }
-
-    Qt3DCore::QTransform *target() const { return m_target; }
-
-    void setRadius(float radius)
-    {
-        if (!qFuzzyCompare(radius, m_radius)) {
-            m_radius = radius;
-            updateMatrix();
-            emit radiusChanged();
-        }
-    }
-
-    float radius() const { return m_radius; }
-
-    void setAngle(float angle)
-    {
-        if (!qFuzzyCompare(angle, m_angle)) {
-            m_angle = angle;
-            updateMatrix();
-            emit angleChanged();
-        }
-    }
-
-    float angle() const { return m_angle; }
-
-signals:
-    void targetChanged();
-    void radiusChanged();
-    void angleChanged();
-
-protected:
-    void updateMatrix()
-    {
-        m_matrix.setToIdentity();
-        m_matrix.rotate(m_angle, QVector3D(0.0f, 1.0f, 0.0f));
-        m_matrix.translate(m_radius, 0.0f, 0.0f);
-        m_target->setMatrix(m_matrix);
-    }
-
-private:
-    Qt3DCore::QTransform *m_target;
-    QMatrix4x4 m_matrix;
-    float m_radius;
-    float m_angle;
-};
-
-int main(int argc, char* argv[])
-{
-    QGuiApplication app(argc, argv);
-    Qt3DRender::QWindow view;
-    Qt3DInput::QInputAspect *input = new Qt3DInput::QInputAspect;
-    view.registerAspect(input);
-
     // Root entity
-    Qt3DCore::QEntity *rootEntity = new Qt3DCore::QEntity();
-
-    // Camera
-    Qt3DCore::QCamera *cameraEntity = view.defaultCamera();
-
-    cameraEntity->lens()->setPerspectiveProjection(45.0f, 16.0f/9.0f, 0.1f, 1000.0f);
-    cameraEntity->setPosition(QVector3D(0, 0, -40.0f));
-    cameraEntity->setUpVector(QVector3D(0, 1, 0));
-    cameraEntity->setViewCenter(QVector3D(0, 0, 0));
-    input->setCamera(cameraEntity);
+    Qt3DCore::QEntity *rootEntity = new Qt3DCore::QEntity;
 
     // Material
-    Qt3DRender::QMaterial *material = new Qt3DRender::QPhongMaterial(rootEntity);
+    Qt3DRender::QMaterial *material = new Qt3DExtras::QPhongMaterial(rootEntity);
 
     // Torus
     Qt3DCore::QEntity *torusEntity = new Qt3DCore::QEntity(rootEntity);
-    Qt3DRender::QTorusMesh *torusMesh = new Qt3DRender::QTorusMesh;
+    Qt3DExtras::QTorusMesh *torusMesh = new Qt3DExtras::QTorusMesh;
     torusMesh->setRadius(5);
     torusMesh->setMinorRadius(1);
     torusMesh->setRings(100);
@@ -165,7 +97,7 @@ int main(int argc, char* argv[])
 
     // Sphere
     Qt3DCore::QEntity *sphereEntity = new Qt3DCore::QEntity(rootEntity);
-    Qt3DRender::QSphereMesh *sphereMesh = new Qt3DRender::QSphereMesh;
+    Qt3DExtras::QSphereMesh *sphereMesh = new Qt3DExtras::QSphereMesh;
     sphereMesh->setRadius(3);
 
     Qt3DCore::QTransform *sphereTransform = new Qt3DCore::QTransform;
@@ -186,10 +118,30 @@ int main(int argc, char* argv[])
     sphereEntity->addComponent(sphereTransform);
     sphereEntity->addComponent(material);
 
-    view.setRootEntity(rootEntity);
+    return rootEntity;
+}
+
+int main(int argc, char* argv[])
+{
+    QGuiApplication app(argc, argv);
+    Qt3DExtras::Qt3DWindow view;
+
+    Qt3DCore::QEntity *scene = createScene();
+
+    // Camera
+    Qt3DRender::QCamera *camera = view.camera();
+    camera->lens()->setPerspectiveProjection(45.0f, 16.0f/9.0f, 0.1f, 1000.0f);
+    camera->setPosition(QVector3D(0, 0, 40.0f));
+    camera->setViewCenter(QVector3D(0, 0, 0));
+
+    // For camera controls
+    Qt3DExtras::QOrbitCameraController *camController = new Qt3DExtras::QOrbitCameraController(scene);
+    camController->setLinearSpeed( 50.0f );
+    camController->setLookSpeed( 180.0f );
+    camController->setCamera(camera);
+
+    view.setRootEntity(scene);
     view.show();
 
     return app.exec();
 }
-
-#include "main.moc"

@@ -1,46 +1,52 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "quick3dbuffer_p.h"
-#include <QQmlEngine>
-#include <QJSValue>
+#include <QtQml/QJSValue>
+#include <QtQml/QQmlEngine>
+
+#include <Qt3DQuickRender/private/quick3dbuffer_p.h>
 #include <QtQml/private/qqmlengine_p.h>
 #include <QtQml/private/qjsvalue_p.h>
 #include <QtQml/private/qv4typedarray_p.h>
 #include <QtQml/private/qv4arraybuffer_p.h>
+#include <Qt3DRender/private/qurlhelper_p.h>
+#include <QtCore/qfile.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -50,12 +56,16 @@ namespace Render {
 
 namespace Quick {
 
-Quick3DBuffer::Quick3DBuffer(QObject *parent)
-    : QObject(parent)
-    , m_engine(Q_NULLPTR)
-    , m_v4engine(Q_NULLPTR)
+namespace {
+const int jsValueTypeId = qMetaTypeId<QJSValue>();
+}
+
+Quick3DBuffer::Quick3DBuffer(Qt3DCore::QNode *parent)
+    : Qt3DRender::QBuffer(QBuffer::VertexBuffer, parent)
+    , m_engine(nullptr)
+    , m_v4engine(nullptr)
 {
-    QObject::connect(parentBuffer(), &Qt3DRender::QAbstractBuffer::dataChanged, this, &Quick3DBuffer::bufferDataChanged);
+    QObject::connect(this, &Qt3DRender::QBuffer::dataChanged, this, &Quick3DBuffer::bufferDataChanged);
 }
 
 QByteArray Quick3DBuffer::convertToRawData(const QJSValue &jsValue)
@@ -76,18 +86,51 @@ QByteArray Quick3DBuffer::convertToRawData(const QJSValue &jsValue)
 
 QVariant Quick3DBuffer::bufferData() const
 {
-    return QVariant::fromValue(parentBuffer()->data());
+    return QVariant::fromValue(data());
 }
 
 void Quick3DBuffer::setBufferData(const QVariant &bufferData)
 {
-    QJSValue jsValue = bufferData.value<QJSValue>();
-    parentBuffer()->setData(convertToRawData(jsValue));
+    if (bufferData.userType() == QMetaType::QByteArray) {
+        QBuffer::setData(bufferData.toByteArray());
+    } else if (bufferData.userType() == jsValueTypeId) {
+        QJSValue jsValue = bufferData.value<QJSValue>();
+        QBuffer::setData(convertToRawData(jsValue));
+    }
+}
+
+void Quick3DBuffer::updateData(int offset, const QVariant &bufferData)
+{
+    if (bufferData.userType() == QMetaType::QByteArray) {
+        QBuffer::updateData(offset, bufferData.toByteArray());
+    } else if (bufferData.userType() == jsValueTypeId) {
+        QJSValue jsValue = bufferData.value<QJSValue>();
+        QBuffer::updateData(offset, convertToRawData(jsValue));
+    }
+}
+
+/*!
+    \qmlmethod string Quick3DBuffer::readBinaryFile(url &fileUrl)
+
+    Reads the binary at \a fileUrl and return it as a QByteArray wrapped in a
+    QVariant
+
+    \note this is provided as convenience for QML where reading files and creating
+    QByteArray is not possible
+ */
+QVariant Quick3DBuffer::readBinaryFile(const QUrl &fileUrl)
+{
+    QFile f(Qt3DRender::QUrlHelper::urlToLocalFileOrQrc(fileUrl));
+    QByteArray data;
+
+    if (f.open(QIODevice::ReadOnly))
+        data = f.readAll();
+    return QVariant(data);
 }
 
 void Quick3DBuffer::initEngines()
 {
-    if (m_engine == Q_NULLPTR) {
+    if (m_engine == nullptr) {
         m_engine = qmlEngine(parent());
         m_v4engine = QQmlEnginePrivate::getV4Engine(m_engine);
     }

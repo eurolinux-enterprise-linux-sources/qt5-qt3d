@@ -1,13 +1,33 @@
 TEMPLATE = subdirs
 
-contains(QT_CONFIG, private_tests) {
+qtConfig(private_tests) {
     SUBDIRS += \
         qaxis \
         qaction \
-        qaxisinput \
         qactioninput \
+        qabstractaxisinput \
+        qanalogaxisinput \
+        qbuttonaxisinput \
+        qkeyboardhandler \
         qlogicaldevice \
         axis \
         action \
-        axisinput
+        abstractaxisinput \
+        actioninput \
+        analogaxisinput \
+        buttonaxisinput \
+        keyboardhandler \
+        qaxisaccumulator \
+        inputsequence \
+        inputchord \
+        qabstractphysicaldevicebackendnode \
+        logicaldevice \
+        qabstractphysicaldeviceproxy \
+        physicaldeviceproxy \
+        loadproxydevicejob \
+        qmousedevice \
+        mousedevice \
+        utils \
+        axisaccumulator \
+        axisaccumulatorjob
 }

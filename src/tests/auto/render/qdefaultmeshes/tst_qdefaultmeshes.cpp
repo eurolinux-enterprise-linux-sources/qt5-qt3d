@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -37,27 +29,32 @@
 #include <QtTest/QTest>
 
 #include <Qt3DRender/qgeometryrenderer.h>
-#include <Qt3DRender/qgeometryfunctor.h>
+#include <Qt3DRender/qgeometryfactory.h>
 #include <Qt3DRender/qgeometry.h>
 #include <Qt3DRender/qattribute.h>
 #include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferfunctor.h>
+#include <Qt3DRender/qbufferdatagenerator.h>
+#include <Qt3DRender/private/qgeometryrenderer_p.h>
+#include <Qt3DRender/private/qgeometry_p.h>
+#include <Qt3DRender/private/qattribute_p.h>
+#include <Qt3DRender/private/qbuffer_p.h>
+#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 
-#include <Qt3DRender/qspheremesh.h>
-#include <Qt3DRender/qcylindermesh.h>
-#include <Qt3DRender/qtorusmesh.h>
-#include <Qt3DRender/qcuboidmesh.h>
-#include <Qt3DRender/qplanemesh.h>
+#include <Qt3DExtras/qspheremesh.h>
+#include <Qt3DExtras/qcylindermesh.h>
+#include <Qt3DExtras/qtorusmesh.h>
+#include <Qt3DExtras/qcuboidmesh.h>
+#include <Qt3DExtras/qplanemesh.h>
 
-// We need to call QNode::clone which is protected
-// So we sublcass QNode instead of QObject
-class tst_QDefaultMeshes: public Qt3DCore::QNode
+
+class tst_QDefaultMeshes: public QObject
 {
     Q_OBJECT
+
 public:
-    ~tst_QDefaultMeshes()
+    tst_QDefaultMeshes()
     {
-        QNode::cleanup();
+        qRegisterMetaType<Qt3DCore::QNode*>();
     }
 
 private Q_SLOTS:
@@ -65,11 +62,11 @@ private Q_SLOTS:
     void checkCloning_data()
     {
         QTest::addColumn<Qt3DRender::QGeometryRenderer *>("geomRenderer");
-        QTest::newRow("QSphereMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DRender::QSphereMesh);
-        QTest::newRow("QCylinderMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DRender::QCylinderMesh);
-        QTest::newRow("QTorusMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DRender::QTorusMesh);
-        QTest::newRow("QCuboidMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DRender::QCuboidMesh);
-        QTest::newRow("QPlaneMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DRender::QPlaneMesh);
+        QTest::newRow("QSphereMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DExtras::QSphereMesh);
+        QTest::newRow("QCylinderMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DExtras::QCylinderMesh);
+        QTest::newRow("QTorusMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DExtras::QTorusMesh);
+        QTest::newRow("QCuboidMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DExtras::QCuboidMesh);
+        QTest::newRow("QPlaneMesh") << static_cast<Qt3DRender::QGeometryRenderer *>(new Qt3DExtras::QPlaneMesh);
     }
 
     void checkCloning()
@@ -78,70 +75,31 @@ private Q_SLOTS:
         QFETCH(Qt3DRender::QGeometryRenderer *, geomRenderer);
 
         // WHEN
-        QScopedPointer<Qt3DRender::QGeometryRenderer> clone(static_cast<Qt3DRender::QGeometryRenderer *>(QNode::clone(geomRenderer)));
+        Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(geomRenderer);
+        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = creationChangeGenerator.creationChanges();
 
         // THEN
-        QVERIFY(clone != Q_NULLPTR);
+        QVERIFY(creationChanges.size() >= 1);
 
-        QCOMPARE(clone->id(), geomRenderer->id());
-        QCOMPARE(clone->instanceCount(), geomRenderer->instanceCount());
-        QCOMPARE(clone->primitiveCount(), geomRenderer->primitiveCount());
-        QCOMPARE(clone->baseVertex(), geomRenderer->baseVertex());
-        QCOMPARE(clone->baseInstance(), geomRenderer->baseInstance());
-        QCOMPARE(clone->restartIndex(), geomRenderer->restartIndex());
-        QCOMPARE(clone->primitiveRestart(), geomRenderer->primitiveRestart());
-        QCOMPARE(clone->primitiveType(), geomRenderer->primitiveType());
+        const Qt3DCore::QNodeCreatedChangePtr<Qt3DRender::QGeometryRendererData> creationChangeData =
+                qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QGeometryRendererData>>(creationChanges.first());
+        const Qt3DRender::QGeometryRendererData &cloneData = creationChangeData->data;
 
-        QCOMPARE(clone->geometryFunctor(), geomRenderer->geometryFunctor());
-        if (geomRenderer->geometryFunctor()) {
-            QVERIFY(clone->geometryFunctor());
-            QVERIFY(*clone->geometryFunctor() == *geomRenderer->geometryFunctor());
-        }
+        QCOMPARE(creationChangeData->subjectId(), geomRenderer->id());
+        QCOMPARE(cloneData.instanceCount, geomRenderer->instanceCount());
+        QCOMPARE(cloneData.vertexCount, geomRenderer->vertexCount());
+        QCOMPARE(cloneData.indexOffset, geomRenderer->indexOffset());
+        QCOMPARE(cloneData.firstInstance, geomRenderer->firstInstance());
+        QCOMPARE(cloneData.restartIndexValue, geomRenderer->restartIndexValue());
+        QCOMPARE(cloneData.primitiveRestart, geomRenderer->primitiveRestartEnabled());
+        QCOMPARE(cloneData.primitiveType, geomRenderer->primitiveType());
+        QCOMPARE(cloneData.geometryFactory, geomRenderer->geometryFactory());
 
-        if (geomRenderer->geometry() != Q_NULLPTR) {
-            QVERIFY(clone->geometry() != Q_NULLPTR);
-            QCOMPARE(clone->geometry()->id(), geomRenderer->geometry()->id());
-
-            const Qt3DRender::QGeometry *geometry = geomRenderer->geometry();
-            const Qt3DRender::QGeometry *clonedGeometry = clone->geometry();
-
-            QCOMPARE(clonedGeometry->attributes().count(), geometry->attributes().count());
-            QCOMPARE(geometry->verticesPerPatch(), clonedGeometry->verticesPerPatch());
-
-            for (int i = 0; i < geometry->attributes().count(); ++i) {
-                const Qt3DRender::QAttribute *originalAttribute = static_cast<Qt3DRender::QAttribute *>(geometry->attributes().at(i));
-                const Qt3DRender::QAttribute *cloneAttribute = static_cast<Qt3DRender::QAttribute *>(clonedGeometry->attributes().at(i));
-
-                QCOMPARE(originalAttribute->id(), cloneAttribute->id());
-                QCOMPARE(originalAttribute->name(), cloneAttribute->name());
-                QCOMPARE(originalAttribute->count(), cloneAttribute->count());
-                QCOMPARE(originalAttribute->byteStride(), cloneAttribute->byteStride());
-                QCOMPARE(originalAttribute->byteOffset(), cloneAttribute->byteOffset());
-                QCOMPARE(originalAttribute->divisor(), cloneAttribute->divisor());
-                QCOMPARE(originalAttribute->attributeType(), cloneAttribute->attributeType());
-
-                const Qt3DRender::QBuffer *buffer = originalAttribute->buffer();
-                const Qt3DRender::QBuffer *clonedBuffer = cloneAttribute->buffer();
-                QCOMPARE(buffer->id(), clonedBuffer->id());
-                QCOMPARE(buffer->data(), clonedBuffer->data());
-                QCOMPARE(buffer->usage(), clonedBuffer->usage());
-                QCOMPARE(buffer->type(), clonedBuffer->type());
-                QCOMPARE(buffer->bufferFunctor(), clonedBuffer->bufferFunctor());
-                QCOMPARE(buffer->isSync(), clonedBuffer->isSync());
-                if (buffer->bufferFunctor()) {
-                    QVERIFY(clonedBuffer->bufferFunctor());
-                    QVERIFY(*clonedBuffer->bufferFunctor() == *buffer->bufferFunctor());
-                }
-            }
+        if (geomRenderer->geometryFactory()) {
+            QVERIFY(cloneData.geometryFactory);
+            QVERIFY(*cloneData.geometryFactory == *geomRenderer->geometryFactory());
         }
     }
-
-protected:
-    Qt3DCore::QNode *doClone() const Q_DECL_OVERRIDE
-    {
-        return Q_NULLPTR;
-    }
-
 };
 
 QTEST_MAIN(tst_QDefaultMeshes)

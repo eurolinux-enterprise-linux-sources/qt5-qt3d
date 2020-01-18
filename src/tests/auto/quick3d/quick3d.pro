@@ -1,6 +1,12 @@
 TEMPLATE = subdirs
 
-contains(QT_CONFIG, private_tests) {
+qtConfig(private_tests) {
     SUBDIRS += \
-        quick3dnodeinstantiator
+        quick3dnodeinstantiator \
+        dynamicnodecreation \
+        3drender \
+        3dinput \
+        3dcore \
+        quick3dbuffer \
+        quick3dnode
 }

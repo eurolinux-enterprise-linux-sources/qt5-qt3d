@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,19 +51,19 @@
 // We mean it.
 //
 
+#include <Qt3DRender/private/backendnode_p.h>
+#include <Qt3DRender/private/shaderparameterpack_p.h>
+#include <Qt3DRender/private/shadervariables_p.h>
+#include <Qt3DRender/qshaderprogram.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <QMutex>
 #include <QVector>
-#include <Qt3DRender/private/quniformvalue_p.h>
-#include <Qt3DRender/private/shadervariables_p.h>
-#include <Qt3DCore/qbackendnode.h>
 
 QT_BEGIN_NAMESPACE
 
 class QOpenGLShaderProgram;
 
 namespace Qt3DRender {
-
-class QShaderProgram;
 
 namespace Render {
 
@@ -69,7 +72,7 @@ class AttachmentPack;
 
 typedef uint ProgramDNA;
 
-class Q_AUTOTEST_EXPORT Shader : public Qt3DCore::QBackendNode
+class Q_AUTOTEST_EXPORT Shader : public BackendNode
 {
 public:
     Shader();
@@ -77,42 +80,69 @@ public:
 
     void cleanup();
 
-    void updateFromPeer(Qt3DCore::QNode *peer) Q_DECL_OVERRIDE;
-    void updateUniforms(GraphicsContext *ctx, const QUniformPack &pack);
+    void setGraphicsContext(GraphicsContext *context);
+    GraphicsContext *graphicsContext();
+
+    void prepareUniforms(ShaderParameterPack &pack);
     void setFragOutputs(const QHash<QString, int> &fragOutputs);
+    const QHash<QString, int> fragOutputs() const;
+
+    inline QVector<int> uniformsNamesIds() const { return m_uniformsNamesIds; }
+    inline QVector<int> uniformBlockNamesIds() const { return m_uniformBlockNamesIds; }
+    inline QVector<int> storageBlockNamesIds() const { return m_shaderStorageBlockNamesIds; }
+    inline QVector<int> attributeNamesIds() const { return m_attributeNamesIds; }
 
     QVector<QString> uniformsNames() const;
     QVector<QString> attributesNames() const;
     QVector<QString> uniformBlockNames() const;
+    QVector<QString> storageBlockNames() const;
     QVector<QByteArray> shaderCode() const;
 
     void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e) Q_DECL_OVERRIDE;
-    bool isLoaded() const;
-    ProgramDNA dna() const;
+    bool isLoaded() const { QMutexLocker lock(&m_mutex); return m_isLoaded; }
+    void setLoaded(bool loaded) { QMutexLocker lock(&m_mutex); m_isLoaded = loaded; }
+    ProgramDNA dna() const Q_DECL_NOTHROW { return m_dna; }
 
-    QVector<ShaderUniform> uniforms() const;
-    QVector<ShaderAttribute> attributes() const;
-    QVector<ShaderUniformBlock> uniformBlocks() const;
+    inline QVector<ShaderUniform> uniforms() const { return m_uniforms; }
+    inline QVector<ShaderAttribute> attributes() const { return m_attributes; }
+    inline QVector<ShaderUniformBlock> uniformBlocks() const { return m_uniformBlocks; }
+    inline QVector<ShaderStorageBlock> storageBlocks() const { return m_shaderStorageBlocks; }
 
-    QHash<QString, ShaderUniform> activeUniformsForBlock(int blockIndex) const;
-    ShaderUniformBlock uniformBlock(int blockIndex);
-    ShaderUniformBlock uniformBlock(const QString &blockName);
+    QHash<QString, ShaderUniform> activeUniformsForUniformBlock(int blockIndex) const;
+
+    ShaderUniformBlock uniformBlockForBlockIndex(int blockNameId);
+    ShaderUniformBlock uniformBlockForBlockNameId(int blockIndex);
+    ShaderUniformBlock uniformBlockForBlockName(const QString &blockName);
+
+    ShaderStorageBlock storageBlockForBlockIndex(int blockIndex);
+    ShaderStorageBlock storageBlockForBlockNameId(int blockNameId);
+    ShaderStorageBlock storageBlockForBlockName(const QString &blockName);
+
+    inline QString log() const { return m_log; }
+    inline QShaderProgram::Status status() const { return m_status; }
+
+    void submitPendingNotifications();
+    inline bool hasPendingNotifications() const { return !m_pendingNotifications.empty(); }
 
 private:
-    QOpenGLShaderProgram *m_program;
-
-    QOpenGLShaderProgram *createProgram(GraphicsContext *context);
-    QOpenGLShaderProgram *createDefaultProgram();
+    void initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change) Q_DECL_FINAL;
 
     QVector<QString> m_uniformsNames;
+    QVector<int> m_uniformsNamesIds;
     QVector<ShaderUniform> m_uniforms;
 
     QVector<QString> m_attributesNames;
+    QVector<int> m_attributeNamesIds;
     QVector<ShaderAttribute> m_attributes;
 
     QVector<QString> m_uniformBlockNames;
+    QVector<int> m_uniformBlockNamesIds;
     QVector<ShaderUniformBlock> m_uniformBlocks;
-    QHash<int, QHash<QString, ShaderUniform> > m_blockIndexToShaderUniforms;
+    QHash<int, QHash<QString, ShaderUniform> > m_uniformBlockIndexToShaderUniforms;
+
+    QVector<QString> m_shaderStorageBlockNames;
+    QVector<int> m_shaderStorageBlockNamesIds;
+    QVector<ShaderStorageBlock> m_shaderStorageBlocks;
 
     QHash<QString, int> m_fragOutputs;
 
@@ -120,7 +150,14 @@ private:
 
     bool m_isLoaded;
     ProgramDNA m_dna;
-    QMutex m_mutex;
+    ProgramDNA m_oldDna;
+    mutable QMutex m_mutex;
+    GraphicsContext *m_graphicsContext;
+    QMetaObject::Connection m_contextConnection;
+    QString m_log;
+    QShaderProgram::Status m_status;
+
+    QVector<Qt3DCore::QPropertyUpdatedChangePtr> m_pendingNotifications;
 
     void updateDNA();
 
@@ -128,12 +165,23 @@ private:
     void initializeUniforms(const QVector<ShaderUniform> &uniformsDescription);
     void initializeAttributes(const QVector<ShaderAttribute> &attributesDescription);
     void initializeUniformBlocks(const QVector<ShaderUniformBlock> &uniformBlockDescription);
+    void initializeShaderStorageBlocks(const QVector<ShaderStorageBlock> &shaderStorageBlockDescription);
 
-    void initialize(const Shader &other);
+    void initializeFromReference(const Shader &other);
+    void setLog(const QString &log);
+    void setStatus(QShaderProgram::Status status);
 
-    QOpenGLShaderProgram *getOrCreateProgram(GraphicsContext *ctx);
     friend class GraphicsContext;
 };
+
+#ifndef QT_NO_DEBUG_STREAM
+inline QDebug operator<<(QDebug dbg, const Shader &shader)
+{
+    QDebugStateSaver saver(dbg);
+    dbg << "QNodeId =" << shader.peerId() << "dna =" << shader.dna() << endl;
+    return dbg;
+}
+#endif
 
 } // namespace Render
 } // namespace Qt3DRender

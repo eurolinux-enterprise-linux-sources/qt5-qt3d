@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -59,11 +62,21 @@ QT_BEGIN_NAMESPACE
 #define GL_SAMPLER_2D_ARRAY_SHADOW        0x8DC4
 #endif
 
+// ES 2.0 FBO
+#ifndef GL_DRAW_FRAMEBUFFER
+#define GL_DRAW_FRAMEBUFFER               0x8CA9
+#endif
+
+#ifndef GL_READ_FRAMEBUFFER
+#define GL_READ_FRAMEBUFFER               0x8CA8
+#endif
+
 namespace Qt3DRender {
 namespace Render {
 
-GraphicsHelperES2::GraphicsHelperES2() :
-    m_funcs(0)
+GraphicsHelperES2::GraphicsHelperES2()
+    : m_funcs(0)
+    , m_supportFramebufferBlit(false)
 {
 }
 
@@ -77,16 +90,18 @@ void GraphicsHelperES2::initializeHelper(QOpenGLContext *context,
     Q_ASSERT(context);
     m_funcs = context->functions();
     Q_ASSERT(m_funcs);
-    m_isES3 = context->format().majorVersion() >= 3;
+    m_ext.reset(new QOpenGLExtensions(context));
+    if (m_ext->hasOpenGLExtension(QOpenGLExtensions::FramebufferBlit))
+        m_supportFramebufferBlit = true;
 }
 
-void GraphicsHelperES2::drawElementsInstanced(GLenum primitiveType,
-                                               GLsizei primitiveCount,
-                                               GLint indexType,
-                                               void *indices,
-                                               GLsizei instances,
-                                               GLint baseVertex,
-                                               GLint baseInstance)
+void GraphicsHelperES2::drawElementsInstancedBaseVertexBaseInstance(GLenum primitiveType,
+                                                                    GLsizei primitiveCount,
+                                                                    GLint indexType,
+                                                                    void *indices,
+                                                                    GLsizei instances,
+                                                                    GLint baseVertex,
+                                                                    GLint baseInstance)
 {
     if (baseInstance != 0)
         qWarning() << "glDrawElementsInstancedBaseVertexBaseInstance is not supported with OpenGL ES 2";
@@ -106,6 +121,16 @@ void GraphicsHelperES2::drawArraysInstanced(GLenum primitiveType,
                                              GLsizei count,
                                              GLsizei instances)
 {
+    for (GLint i = 0; i < instances; i++)
+        drawArrays(primitiveType,
+                   first,
+                   count);
+}
+
+void GraphicsHelperES2::drawArraysInstancedBaseInstance(GLenum primitiveType, GLint first, GLsizei count, GLsizei instances, GLsizei baseInstance)
+{
+    if (baseInstance != 0)
+        qWarning() << "glDrawArraysInstancedBaseInstance is not supported with OpenGL ES 2";
     for (GLint i = 0; i < instances; i++)
         drawArrays(primitiveType,
                    first,
@@ -142,6 +167,16 @@ void GraphicsHelperES2::drawArrays(GLenum primitiveType,
     m_funcs->glDrawArrays(primitiveType,
                           first,
                           count);
+}
+
+void GraphicsHelperES2::drawElementsIndirect(GLenum, GLenum, void *)
+{
+    qWarning() << "Indirect Drawing is not supported with OpenGL ES 2";
+}
+
+void GraphicsHelperES2::drawArraysIndirect(GLenum , void *)
+{
+    qWarning() << "Indirect Drawing is not supported with OpenGL ES 2";
 }
 
 void GraphicsHelperES2::setVerticesPerPatch(GLint verticesPerPatch)
@@ -208,6 +243,14 @@ QVector<ShaderUniformBlock> GraphicsHelperES2::programUniformBlocks(GLuint progr
     return blocks;
 }
 
+QVector<ShaderStorageBlock> GraphicsHelperES2::programShaderStorageBlocks(GLuint programId)
+{
+    Q_UNUSED(programId);
+    QVector<ShaderStorageBlock> blocks;
+    qWarning() << "SSBO are not supported by OpenGL ES 2.0 (since OpenGL ES 3.1)";
+    return blocks;
+}
+
 void GraphicsHelperES2::vertexAttribDivisor(GLuint index, GLuint divisor)
 {
     Q_UNUSED(index);
@@ -228,6 +271,17 @@ void GraphicsHelperES2::blendFunci(GLuint buf, GLenum sfactor, GLenum dfactor)
     qWarning() << "glBlendFunci() not supported by OpenGL ES 2.0";
 }
 
+void GraphicsHelperES2::blendFuncSeparatei(GLuint buf, GLenum sRGB, GLenum dRGB, GLenum sAlpha, GLenum dAlpha)
+{
+    Q_UNUSED(buf);
+    Q_UNUSED(sRGB);
+    Q_UNUSED(dRGB);
+    Q_UNUSED(sAlpha);
+    Q_UNUSED(dAlpha);
+
+    qWarning() << "glBlendFuncSeparatei() not supported by OpenGL ES 2.0";
+}
+
 void GraphicsHelperES2::alphaTest(GLenum, GLenum)
 {
     qCWarning(Render::Rendering) << Q_FUNC_INFO << "AlphaTest not available with OpenGL ES 2.0";
@@ -244,25 +298,21 @@ void GraphicsHelperES2::depthMask(GLenum mode)
     m_funcs->glDepthMask(mode);
 }
 
-void GraphicsHelperES2::cullFace(GLenum mode)
-{
-    m_funcs->glEnable(GL_CULL_FACE);
-    m_funcs->glCullFace(mode);
-}
-
 void GraphicsHelperES2::frontFace(GLenum mode)
 {
     m_funcs->glFrontFace(mode);
 }
 
-void GraphicsHelperES2::enableAlphaCoverage()
+void GraphicsHelperES2::setMSAAEnabled(bool enabled)
 {
-    m_funcs->glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+    Q_UNUSED(enabled);
+    qWarning() << "MSAA not available with OpenGL ES 2.0";
 }
 
-void GraphicsHelperES2::disableAlphaCoverage()
+void GraphicsHelperES2::setAlphaCoverageEnabled(bool enabled)
 {
-    m_funcs->glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+    enabled ? m_funcs->glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+            : m_funcs->glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 }
 
 GLuint GraphicsHelperES2::createFrameBufferObject()
@@ -277,9 +327,20 @@ void GraphicsHelperES2::releaseFrameBufferObject(GLuint frameBufferId)
     m_funcs->glDeleteFramebuffers(1, &frameBufferId);
 }
 
-void GraphicsHelperES2::bindFrameBufferObject(GLuint frameBufferId)
+void GraphicsHelperES2::bindFrameBufferObject(GLuint frameBufferId, FBOBindMode mode)
 {
-    m_funcs->glBindFramebuffer(GL_FRAMEBUFFER, frameBufferId);
+    switch (mode) {
+    case FBODraw:
+        m_funcs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, frameBufferId);
+        return;
+    case FBORead:
+        m_funcs->glBindFramebuffer(GL_READ_FRAMEBUFFER, frameBufferId);
+        return;
+    case FBOReadAndDraw:
+    default:
+        m_funcs->glBindFramebuffer(GL_FRAMEBUFFER, frameBufferId);
+        return;
+    }
 }
 
 GLuint GraphicsHelperES2::boundFrameBufferObject()
@@ -298,17 +359,23 @@ void GraphicsHelperES2::bindFrameBufferAttachment(QOpenGLTexture *texture, const
 {
     GLenum attr = GL_COLOR_ATTACHMENT0;
 
-    if (attachment.m_type == QRenderAttachment::ColorAttachment0)
+    if (attachment.m_point == QRenderTargetOutput::Color0)
         attr = GL_COLOR_ATTACHMENT0;
-    else if (attachment.m_type == QRenderAttachment::DepthAttachment)
+    else if (attachment.m_point == QRenderTargetOutput::Depth)
         attr = GL_DEPTH_ATTACHMENT;
-    else if (attachment.m_type == QRenderAttachment::StencilAttachment)
+    else if (attachment.m_point == QRenderTargetOutput::Stencil)
         attr = GL_STENCIL_ATTACHMENT;
     else
         qCritical() << "Unsupported FBO attachment OpenGL ES 2.0";
 
+    const QOpenGLTexture::Target target = texture->target();
+
+    if (target == QOpenGLTexture::TargetCubeMap && attachment.m_face == QAbstractTexture::AllFaces) {
+        qWarning() << "OpenGL ES 2.0 doesn't handle attaching all the faces of a cube map texture at once to an FBO";
+        return;
+    }
+
     texture->bind();
-    QOpenGLTexture::Target target = texture->target();
     if (target == QOpenGLTexture::Target2D)
         m_funcs->glFramebufferTexture2D(GL_FRAMEBUFFER, attr, target, texture->textureId(), attachment.m_mipLevel);
     else if (target == QOpenGLTexture::TargetCubeMap)
@@ -323,120 +390,15 @@ bool GraphicsHelperES2::supportsFeature(GraphicsHelperInterface::Feature feature
     switch (feature) {
     case RenderBufferDimensionRetrieval:
         return true;
+    case BlitFramebuffer:
+        return m_supportFramebufferBlit;
     default:
         return false;
     }
 }
-void GraphicsHelperES2::drawBuffers(GLsizei , const int *)
+void GraphicsHelperES2::drawBuffers(GLsizei, const int *)
 {
-    qCritical() << "drawBuffers is not supported by ES 2.0";
-}
-
-void GraphicsHelperES2::bindUniform(const QVariant &v, const ShaderUniform &description)
-{
-    switch (description.m_type) {
-
-    case GL_FLOAT:
-        m_funcs->glUniform1fv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 1));
-        break;
-
-    case GL_FLOAT_VEC2:
-        m_funcs->glUniform2fv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 2));
-        break;
-
-    case GL_FLOAT_VEC3:
-        m_funcs->glUniform3fv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 3));
-        break;
-
-    case GL_FLOAT_VEC4:
-        m_funcs->glUniform4fv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 4));
-        break;
-
-    case GL_FLOAT_MAT2:
-        m_funcs->glUniformMatrix2fv(description.m_location, description.m_size, GL_FALSE,
-                                    QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 4));
-        break;
-
-    case GL_FLOAT_MAT3:
-        m_funcs->glUniformMatrix3fv(description.m_location, description.m_size, GL_FALSE,
-                                    QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 9));
-        break;
-
-    case GL_FLOAT_MAT4:
-        m_funcs->glUniformMatrix4fv(description.m_location, description.m_size, GL_FALSE,
-                                    QGraphicsUtils::valueArrayFromVariant<GLfloat>(v, description.m_size, 16));
-        break;
-
-    case GL_INT:
-        m_funcs->glUniform1iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 1));
-        break;
-
-    case GL_INT_VEC2:
-        m_funcs->glUniform2iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 2));
-        break;
-
-    case GL_INT_VEC3:
-        m_funcs->glUniform3iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 3));
-        break;
-
-    case GL_INT_VEC4:
-        m_funcs->glUniform4iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 4));
-        break;
-
-    case GL_BOOL:
-        m_funcs->glUniform1iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 1));
-        break;
-
-    case GL_BOOL_VEC2:
-        m_funcs->glUniform2iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 2));
-        break;
-
-    case GL_BOOL_VEC3:
-        m_funcs->glUniform3iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 3));
-        break;
-
-    case GL_BOOL_VEC4:
-        m_funcs->glUniform4iv(description.m_location, description.m_size,
-                              QGraphicsUtils::valueArrayFromVariant<GLint>(v, description.m_size, 4));
-        break;
-
-    case GL_SAMPLER_2D:
-    case GL_SAMPLER_CUBE: {
-        Q_ASSERT(description.m_size == 1);
-        m_funcs->glUniform1i(description.m_location, v.toInt());
-        break;
-    }
-
-        // ES 3.0+
-    case GL_SAMPLER_3D:
-    case GL_SAMPLER_2D_SHADOW:
-    case GL_SAMPLER_CUBE_SHADOW:
-    case GL_SAMPLER_2D_ARRAY:
-    case GL_SAMPLER_2D_ARRAY_SHADOW:
-        if (m_isES3) {
-            Q_ASSERT(description.m_size == 1);
-            m_funcs->glUniform1i(description.m_location, v.toInt());
-        } else {
-            qWarning() << Q_FUNC_INFO << "ES 3.0 uniform type" << description.m_type << "for"
-                       << description.m_name << "is not supported in ES 2.0";
-        }
-        break;
-
-    default:
-        qWarning() << Q_FUNC_INFO << "unsupported uniform type:" << description.m_type << "for " << description.m_name;
-        break;
-    }
+    qWarning() << "drawBuffers is not supported by ES 2.0";
 }
 
 void GraphicsHelperES2::bindFragDataLocation(GLuint , const QHash<QString, int> &)
@@ -450,6 +412,14 @@ void GraphicsHelperES2::bindUniformBlock(GLuint programId, GLuint uniformBlockIn
     Q_UNUSED(uniformBlockIndex);
     Q_UNUSED(uniformBlockBinding);
     qWarning() << "UBO are not supported by ES 2.0 (since ES 3.0)";
+}
+
+void GraphicsHelperES2::bindShaderStorageBlock(GLuint programId, GLuint shaderStorageBlockIndex, GLuint shaderStorageBlockBinding)
+{
+    Q_UNUSED(programId);
+    Q_UNUSED(shaderStorageBlockIndex);
+    Q_UNUSED(shaderStorageBlockBinding);
+    qWarning() << "SSBO are not supported by ES 2.0 (since ES 3.1)";
 }
 
 void GraphicsHelperES2::bindBufferBase(GLenum target, GLuint index, GLuint buffer)
@@ -538,9 +508,20 @@ void GraphicsHelperES2::disableClipPlane(int)
 {
 }
 
+void GraphicsHelperES2::setClipPlane(int, const QVector3D &, float)
+{
+    qWarning() << "Clip planes not supported by OpenGL ES 2.0";
+}
+
 GLint GraphicsHelperES2::maxClipPlaneCount()
 {
     return 0;
+}
+
+void GraphicsHelperES2::memoryBarrier(QMemoryBarrier::Operations barriers)
+{
+    Q_UNUSED(barriers);
+    qWarning() << "memory barrier is not supported by OpenGL ES 2.0 (since 4.3)";
 }
 
 void GraphicsHelperES2::enablePrimitiveRestart(int)
@@ -549,6 +530,13 @@ void GraphicsHelperES2::enablePrimitiveRestart(int)
 
 void GraphicsHelperES2::disablePrimitiveRestart()
 {
+}
+
+void GraphicsHelperES2::clearBufferf(GLint drawbuffer, const QVector4D &values)
+{
+    Q_UNUSED(drawbuffer);
+    Q_UNUSED(values);
+    qWarning() << "glClearBuffer*() not supported by OpenGL ES 2.0";
 }
 
 void GraphicsHelperES2::pointSize(bool programmable, GLfloat value)
@@ -561,6 +549,26 @@ void GraphicsHelperES2::pointSize(bool programmable, GLfloat value)
             warned = true;
         }
     }
+}
+
+void GraphicsHelperES2::enablei(GLenum cap, GLuint index)
+{
+    Q_UNUSED(cap);
+    Q_UNUSED(index);
+    qWarning() << "glEnablei() not supported by OpenGL ES 2.0";
+}
+
+void GraphicsHelperES2::disablei(GLenum cap, GLuint index)
+{
+    Q_UNUSED(cap);
+    Q_UNUSED(index);
+    qWarning() << "glDisablei() not supported by OpenGL ES 2.0";
+}
+
+void GraphicsHelperES2::setSeamlessCubemap(bool enable)
+{
+    Q_UNUSED(enable);
+    qWarning() << "GL_TEXTURE_CUBE_MAP_SEAMLESS not supported by OpenGL ES 2.0";
 }
 
 QSize GraphicsHelperES2::getRenderBufferDimensions(GLuint renderBufferId)
@@ -583,6 +591,184 @@ QSize GraphicsHelperES2::getTextureDimensions(GLuint textureId, GLenum target, u
     Q_UNUSED(level);
     qCritical() << "getTextureDimensions is not supported by ES 2.0";
     return QSize(0, 0);
+}
+
+void GraphicsHelperES2::dispatchCompute(GLuint wx, GLuint wy, GLuint wz)
+{
+    Q_UNUSED(wx);
+    Q_UNUSED(wy);
+    Q_UNUSED(wz);
+    qWarning() << "Compute Shaders are not supported by ES 2.0 (since ES 3.1)";
+}
+
+char *GraphicsHelperES2::mapBuffer(GLenum target)
+{
+    Q_UNUSED(target);
+    qWarning() << "Map buffer is not a core requirement for ES 2.0";
+    return nullptr;
+}
+
+GLboolean GraphicsHelperES2::unmapBuffer(GLenum target)
+{
+    Q_UNUSED(target);
+    qWarning() << "unMap buffer is not a core requirement for ES 2.0";
+    return false;
+}
+
+void GraphicsHelperES2::glUniform1fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniform1fv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform2fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniform2fv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform3fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniform3fv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform4fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniform4fv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform1iv(GLint location, GLsizei count, const GLint *values)
+{
+    m_funcs->glUniform1iv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform2iv(GLint location, GLsizei count, const GLint *values)
+{
+    m_funcs->glUniform2iv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform3iv(GLint location, GLsizei count, const GLint *values)
+{
+    m_funcs->glUniform3iv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform4iv(GLint location, GLsizei count, const GLint *values)
+{
+    m_funcs->glUniform4iv(location, count, values);
+}
+
+void GraphicsHelperES2::glUniform1uiv(GLint , GLsizei , const GLuint *)
+{
+    qWarning() << "glUniform1uiv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniform2uiv(GLint , GLsizei , const GLuint *)
+{
+    qWarning() << "glUniform2uiv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniform3uiv(GLint , GLsizei , const GLuint *)
+{
+    qWarning() << "glUniform3uiv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniform4uiv(GLint , GLsizei , const GLuint *)
+{
+    qWarning() << "glUniform4uiv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniformMatrix2fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniformMatrix2fv(location, count, false, values);
+}
+
+void GraphicsHelperES2::glUniformMatrix3fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniformMatrix3fv(location, count, false, values);
+}
+
+void GraphicsHelperES2::glUniformMatrix4fv(GLint location, GLsizei count, const GLfloat *values)
+{
+    m_funcs->glUniformMatrix4fv(location, count, false, values);
+}
+
+void GraphicsHelperES2::glUniformMatrix2x3fv(GLint , GLsizei , const GLfloat *)
+{
+    qWarning() << "glUniformMatrix2x3fv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniformMatrix3x2fv(GLint , GLsizei , const GLfloat *)
+{
+    qWarning() << "glUniformMatrix3x2fv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniformMatrix2x4fv(GLint , GLsizei , const GLfloat *)
+{
+    qWarning() << "glUniformMatrix2x4fv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniformMatrix4x2fv(GLint , GLsizei , const GLfloat *)
+{
+    qWarning() << "glUniformMatrix4x2fv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniformMatrix3x4fv(GLint , GLsizei , const GLfloat *)
+{
+    qWarning() << "glUniformMatrix3x4fv not supported by ES 2";
+}
+
+void GraphicsHelperES2::glUniformMatrix4x3fv(GLint , GLsizei , const GLfloat *)
+{
+    qWarning() << "glUniformMatrix4x3fv not supported by ES 2";
+}
+
+UniformType GraphicsHelperES2::uniformTypeFromGLType(GLenum type)
+{
+    switch (type) {
+    case GL_FLOAT:
+        return UniformType::Float;
+    case GL_FLOAT_VEC2:
+        return UniformType::Vec2;
+    case GL_FLOAT_VEC3:
+        return UniformType::Vec3;
+    case GL_FLOAT_VEC4:
+        return UniformType::Vec4;
+    case GL_FLOAT_MAT2:
+        return UniformType::Mat2;
+    case GL_FLOAT_MAT3:
+        return UniformType::Mat3;
+    case GL_FLOAT_MAT4:
+        return UniformType::Mat4;
+    case GL_INT:
+        return UniformType::Int;
+    case GL_INT_VEC2:
+        return UniformType::IVec2;
+    case GL_INT_VEC3:
+        return UniformType::IVec3;
+    case GL_INT_VEC4:
+        return UniformType::IVec4;
+    case GL_BOOL:
+        return UniformType::Bool;
+    case GL_BOOL_VEC2:
+        return UniformType::BVec2;
+    case GL_BOOL_VEC3:
+        return UniformType::BVec3;
+    case GL_BOOL_VEC4:
+        return UniformType::BVec4;
+
+    case GL_SAMPLER_2D:
+    case GL_SAMPLER_CUBE:
+        return UniformType::Sampler;
+    default:
+        Q_UNREACHABLE();
+        return UniformType::Float;
+    }
+}
+
+void GraphicsHelperES2::blitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)
+{
+    if (!m_supportFramebufferBlit)
+        qWarning() << "Framebuffer blits are not supported by ES 2.0 (since ES 3.1)";
+    else
+        m_ext->glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
 }
 
 } // namespace Render

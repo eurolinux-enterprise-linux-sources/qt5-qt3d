@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -36,10 +39,14 @@
 
 #include "qcomponent.h"
 #include "qcomponent_p.h"
-#include "qentity.h"
-#include "qentity_p.h"
-#include "qscene_p.h"
-#include <Qt3DCore/qscenepropertychange.h>
+
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qcomponentaddedchange.h>
+#include <Qt3DCore/qcomponentremovedchange.h>
+#include <Qt3DCore/qentity.h>
+
+#include <Qt3DCore/private/qentity_p.h>
+#include <Qt3DCore/private/qscene_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -51,41 +58,37 @@ QComponentPrivate::QComponentPrivate()
 {
 }
 
+QComponentPrivate::~QComponentPrivate()
+{
+}
+
 void QComponentPrivate::addEntity(QEntity *entity)
 {
+    Q_Q(QComponent);
     m_entities.append(entity);
 
-    if (m_scene != Q_NULLPTR && !m_scene->hasEntityForComponent(m_id, entity->id())) {
+    if (m_scene != nullptr && !m_scene->hasEntityForComponent(m_id, entity->id())) {
         if (!m_shareable && !m_scene->entitiesForComponent(m_id).isEmpty())
             qWarning() << "Trying to assign a non shareable component to more than one Entity";
         m_scene->addEntityForComponent(m_id, entity->id());
     }
 
-    // We notify only if we have a QChangeArbiter
-    if (m_changeArbiter != Q_NULLPTR) {
-        Q_Q(QComponent);
-        QScenePropertyChangePtr e(new QScenePropertyChange(ComponentAdded, QSceneChange::Node, q->id()));
-        e->setPropertyName("entity");
-        e->setValue(QVariant::fromValue(entity->id()));
-        notifyObservers(e);
-    }
+    const auto componentAddedChange = QComponentAddedChangePtr::create(entity, q);
+    notifyObservers(componentAddedChange);
+    Q_EMIT q->addedToEntity(entity);
 }
 
 void QComponentPrivate::removeEntity(QEntity *entity)
 {
-    // We notify only if we have a QChangeArbiter
-    if (m_changeArbiter != Q_NULLPTR) {
-        Q_Q(QComponent);
-        QScenePropertyChangePtr e(new QScenePropertyChange(ComponentRemoved, QSceneChange::Node, q->id()));
-        e->setPropertyName("entity");
-        e->setValue(QVariant::fromValue(entity->id()));
-        notifyObservers(e);
-    }
-
-    if (m_scene != Q_NULLPTR)
+    Q_Q(QComponent);
+    if (m_scene != nullptr)
         m_scene->removeEntityForComponent(m_id, entity->id());
 
     m_entities.removeAll(entity);
+
+    const auto componentRemovedChange = QComponentRemovedChangePtr::create(entity, q);
+    notifyObservers(componentRemovedChange);
+    Q_EMIT q->removedFromEntity(entity);
 }
 
 /*!
@@ -114,15 +117,13 @@ void QComponentPrivate::removeEntity(QEntity *entity)
     instance one of the subclasses instead.
 */
 QComponent::QComponent(QNode *parent)
-    : QNode(*new QComponentPrivate, parent)
-{
-}
+    : QComponent(*new QComponentPrivate, parent) {}
 
 QComponent::~QComponent()
 {
-    Q_ASSERT_X(QNodePrivate::get(this)->m_wasCleanedUp, Q_FUNC_INFO, "QNode::cleanup should have been called by now. A Qt3DCore::QComponent subclass didn't call QNode::cleanup in its destructor");
+    Q_D(QComponent);
 
-    Q_FOREACH (QEntity *entity, entities()) {
+    for (QEntity *entity : qAsConst(d->m_entities)) {
         QEntityPrivate *entityPimpl = static_cast<QEntityPrivate *>(QEntityPrivate::get(entity));
         if (entityPimpl)
             entityPimpl->m_components.removeAll(this);
@@ -130,17 +131,16 @@ QComponent::~QComponent()
 }
 
 /*!
-    Returns whether the QComponent is shareable across entities or not.
+    \property Qt3DCore::QComponent::isShareable
+    Holds the shareable flag of the QComponent. The QComponent can be shared across several
+    entities if \c{true}.
 */
-bool QComponent::shareable() const
+bool QComponent::isShareable() const
 {
     Q_D(const QComponent);
     return d->m_shareable;
 }
 
-/*!
-    The QComponent can be shared across several entities if \a shareable is true.
-*/
 void QComponent::setShareable(bool shareable)
 {
     Q_D(QComponent);
@@ -148,13 +148,6 @@ void QComponent::setShareable(bool shareable)
         d->m_shareable = shareable;
         emit shareableChanged(shareable);
     }
-}
-
-void QComponent::copy(const QNode *ref)
-{
-    QNode::copy(ref);
-    const QComponent *comp = static_cast<const QComponent *>(ref);
-    setShareable(comp->shareable());
 }
 
 /*!
@@ -186,7 +179,7 @@ QComponent::QComponent(QComponentPrivate &dd, QNode *parent)
 */
 
 /*!
-    \qmlproperty bool Qt3DCore::Component3D::shareable
+    \qmlproperty bool Component3D::isShareable
 */
 
 QT_END_NAMESPACE

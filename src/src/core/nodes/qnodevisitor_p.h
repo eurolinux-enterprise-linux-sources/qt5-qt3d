@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,9 +51,9 @@
 // We mean it.
 //
 
-#include <Qt3DCore/qt3dcore_global.h>
-#include <Qt3DCore/qnode.h>
 #include <Qt3DCore/qentity.h>
+#include <Qt3DCore/qnode.h>
+#include <Qt3DCore/qt3dcore_global.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -89,18 +92,19 @@ public:
 
     QNode *rootNode() const;
     QNode *currentNode() const;
-    void setPath(QNodeList path);
-    QNodeList path() const;
+    void setPath(QNodeVector path);
+    QNodeVector path() const;
     void append(QNode *n);
     void pop_back();
 
 private:
-    QNodeList m_path;
+    Q_DISABLE_COPY(QNodeVisitor)
+    QNodeVector m_path;
 
     template<typename NodeVisitorFunctor>
     void startTraversing(QNode *rootNode_, NodeVisitorFunctor fN)
     {
-        setPath(QNodeList() << rootNode_);
+        setPath(QNodeVector() << rootNode_);
         if (rootNode_)
             visitNode(rootNode_, fN);
     }
@@ -108,7 +112,7 @@ private:
     template<typename NodeVisitorFunctor, typename EntityVisitorFunctor>
     void startTraversing(QNode *rootNode_, NodeVisitorFunctor fN, EntityVisitorFunctor fE)
     {
-        setPath(QNodeList() << rootNode_);
+        setPath(QNodeVector() << rootNode_);
         QEntity* rootEntity = qobject_cast<QEntity *>(rootNode_);
 
         if (rootEntity)
@@ -141,9 +145,9 @@ private:
     template<typename NodeVisitorFunctor, typename EntityVisitorFunctor>
     void traverseChildren(NodeVisitorFunctor &fN, EntityVisitorFunctor &fE)
     {
-        Q_FOREACH (QObject *n, currentNode()->children()) {
+        for (QObject *n : currentNode()->children()) {
             QNode *node = qobject_cast<QNode *>(n);
-            if (node != Q_NULLPTR)
+            if (node != nullptr)
                 outerVisitNode(node, fN, fE);
         } // of children iteration
     }
@@ -151,9 +155,9 @@ private:
     template<typename NodeVisitorFunctor>
     void traverseChildren(NodeVisitorFunctor &fN)
     {
-        Q_FOREACH (QObject *n, currentNode()->children()) {
+        for (QObject *n : currentNode()->children()) {
             QNode *node = qobject_cast<QNode *>(n);
-            if (node != Q_NULLPTR)
+            if (node != nullptr)
                 outerVisitNode(node, fN);
         } // of children iteration
     }

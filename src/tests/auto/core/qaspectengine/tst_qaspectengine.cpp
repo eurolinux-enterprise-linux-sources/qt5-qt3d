@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +34,44 @@
 
 using namespace Qt3DCore;
 
+class PrintRootAspect : public QAbstractAspect
+{
+    Q_OBJECT
+public:
+    explicit PrintRootAspect(QObject *parent = 0)
+        : QAbstractAspect(parent)
+        , m_rootEntityId()
+    {
+        qDebug() << Q_FUNC_INFO;
+    }
+
+private:
+    void onRegistered() Q_DECL_OVERRIDE
+    {
+        qDebug() << Q_FUNC_INFO;
+    }
+
+    void onEngineStartup() Q_DECL_OVERRIDE
+    {
+        qDebug() << Q_FUNC_INFO;
+        m_rootEntityId = rootEntityId();
+    }
+
+    void onEngineShutdown() Q_DECL_OVERRIDE
+    {
+        qDebug() << Q_FUNC_INFO;
+    }
+
+    QVector<QAspectJobPtr> jobsToExecute(qint64) Q_DECL_OVERRIDE \
+    {
+        if (m_rootEntityId)
+            qDebug() << Q_FUNC_INFO << m_rootEntityId;
+        return QVector<QAspectJobPtr>();
+    }
+
+    QNodeId m_rootEntityId;
+};
+
 #define FAKE_ASPECT(ClassName) \
 class ClassName : public QAbstractAspect \
 { \
@@ -49,14 +79,12 @@ class ClassName : public QAbstractAspect \
 public: \
     explicit ClassName(QObject *parent = 0) \
         : QAbstractAspect(parent) {} \
-\
+    \
 private: \
-    void onRootEntityChanged(QEntity *) Q_DECL_OVERRIDE {} \
-    void onInitialize(const QVariantMap &) Q_DECL_OVERRIDE {} \
-    void onStartup() Q_DECL_OVERRIDE {} \
-    void onShutdown() Q_DECL_OVERRIDE {} \
-    void onCleanup() Q_DECL_OVERRIDE {} \
-\
+    void onRegistered() Q_DECL_OVERRIDE {} \
+    void onEngineStartup() Q_DECL_OVERRIDE {} \
+    void onEngineShutdown() Q_DECL_OVERRIDE {} \
+    \
     QVector<QAspectJobPtr> jobsToExecute(qint64) Q_DECL_OVERRIDE \
     { \
         return QVector<QAspectJobPtr>(); \
@@ -71,7 +99,7 @@ private: \
         } \
         \
         return QVariant(); \
-    }\
+    } \
 };
 
 FAKE_ASPECT(FakeAspect)
@@ -95,7 +123,7 @@ private Q_SLOTS:
     void constructionDestruction()
     {
         QAspectEngine *engine = new QAspectEngine;
-        QVERIFY(engine->rootEntity() == Q_NULLPTR);
+        QVERIFY(engine->rootEntity() == nullptr);
         delete engine;
     }
 
@@ -105,7 +133,7 @@ private Q_SLOTS:
 
         QEntity *e = new QEntity;
         e->setObjectName("root");
-        engine->setRootEntity(e);
+        engine->setRootEntity(QEntityPtr(e));
 
         QSharedPointer<QEntity> root = engine->rootEntity();
         QVERIFY(root == e);
@@ -114,6 +142,55 @@ private Q_SLOTS:
         QVERIFY(engine->rootEntity()->objectName() == "root");
 
         delete engine;
+    }
+
+    void shouldNotCrashInNormalStartupShutdownSequence()
+    {
+        // GIVEN
+        // An initialized aspect engine...
+        QAspectEngine engine;
+        // ...and a simple aspect
+        PrintRootAspect *aspect = new PrintRootAspect;
+
+        // WHEN
+        // We register the aspect
+        engine.registerAspect(aspect);
+
+        // THEN
+        const auto registeredAspects = engine.aspects();
+        QCOMPARE(registeredAspects.size(), 1);
+        QCOMPARE(registeredAspects.first(), aspect);
+
+        // WHEN
+        QEntityPtr entity(new QEntity);
+        entity->setObjectName("RootEntity");
+        // we set a scene root entity
+        engine.setRootEntity(entity);
+
+        QEventLoop eventLoop;
+        QTimer::singleShot(100, &eventLoop, SLOT(quit()));
+        eventLoop.exec();
+
+        // THEN
+        // we don't crash and...
+        const auto rootEntity = engine.rootEntity();
+        QCOMPARE(rootEntity, entity);
+
+        // WHEN
+        // we set an empty/null scene root...
+        engine.setRootEntity(QEntityPtr());
+        QTimer::singleShot(1000, &eventLoop, SLOT(quit()));
+
+        // ...and allow events to process...
+        eventLoop.exec();
+
+        // THEN
+        // ... we don't crash.
+
+        // TODO: Add more tests to check for
+        // * re-setting a scene
+        // * deregistering aspects
+        // * destroying the aspect engine
     }
 
     void shouldNotCrashOnShutdownWhenComponentIsCreatedWithParentBeforeItsEntity()
@@ -130,11 +207,11 @@ private Q_SLOTS:
         QAspectEngine engine;
 
         // WHEN
-        engine.setRootEntity(root);
+        engine.setRootEntity(QEntityPtr(root));
 
         // THEN
         // Nothing particular happen on exit, especially no crash
-    };
+    }
 
     void shouldRegisterAspectsByName()
     {

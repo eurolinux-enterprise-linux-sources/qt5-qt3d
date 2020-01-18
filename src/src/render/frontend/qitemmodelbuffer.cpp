@@ -1,40 +1,43 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "qitemmodelbuffer.h"
+#include "qitemmodelbuffer_p.h"
 #include <Qt3DRender/private/graphicscontext_p.h>
 #include <QDebug>
 #include <QColor>
@@ -111,33 +114,33 @@ void variantToBytes(void* dest, const QVariant& v, GLint type)
 
 namespace {
 
-QAbstractAttribute::DataType typeFromGLType(GLint dataType, uint &dataCount)
+QAttribute::VertexBaseType typeFromGLType(GLint dataType, uint &dataCount)
 {
     switch (dataType) {
 
     case GL_UNSIGNED_SHORT:
         dataCount = 1;
-        return QAbstractAttribute::UnsignedShort;
+        return QAttribute::UnsignedShort;
 
     case GL_UNSIGNED_BYTE:
         dataCount = 1;
-        return QAbstractAttribute::UnsignedByte;
+        return QAttribute::UnsignedByte;
 
     case GL_UNSIGNED_INT:
         dataCount = 1;
-        return QAbstractAttribute::UnsignedInt;
+        return QAttribute::UnsignedInt;
 
     case GL_SHORT:
         dataCount = 1;
-        return QAbstractAttribute::Short;
+        return QAttribute::Short;
 
     case GL_BYTE:
         dataCount = 1;
-        return QAbstractAttribute::Byte;
+        return QAttribute::Byte;
 
     case GL_INT:
         dataCount = 1;
-        return QAbstractAttribute::Int;
+        return QAttribute::Int;
 
     case GL_FLOAT:
         dataCount = 1;
@@ -161,13 +164,13 @@ QAbstractAttribute::DataType typeFromGLType(GLint dataType, uint &dataCount)
         Q_UNREACHABLE();
     }
 
-    return QAbstractAttribute::Float;
+    return QAttribute::Float;
 }
 
 } // anonymous
 
 QItemModelBuffer::QItemModelBuffer()
-    : m_buffer(Q_NULLPTR)
+    : m_buffer(nullptr)
 {
 }
 
@@ -178,7 +181,7 @@ void QItemModelBuffer::setModel(QAbstractItemModel *model)
 
     m_model = model;
     delete m_buffer;
-    m_buffer = Q_NULLPTR;
+    m_buffer = nullptr;
 
     connect(m_model, SIGNAL(modelReset()), this, SLOT(onModelReset()));
     connect(m_model, SIGNAL(dataChanged(QModelIndex,QModelIndex)),
@@ -189,7 +192,7 @@ void QItemModelBuffer::setRoot(const QModelIndex &rootIndex)
 {
     m_rootIndex = rootIndex;
     delete m_buffer;
-    m_buffer = Q_NULLPTR;
+    m_buffer = nullptr;
 }
 
 void QItemModelBuffer::mapRoleName(QByteArray roleName, int elementType)
@@ -207,7 +210,7 @@ void QItemModelBuffer::mapRoleName(QByteArray roleName, QString attributeName, i
 
     m_mappings.append(RoleMapping(roleName, attributeName, elementType));
     delete m_buffer;
-    m_buffer = Q_NULLPTR;
+    m_buffer = nullptr;
 }
 
 QBuffer *QItemModelBuffer::buffer()
@@ -233,7 +236,7 @@ QBuffer *QItemModelBuffer::buffer()
         for (int m=0; m<mappingCount; ++m) {
             const RoleMapping mapping(m_mappings.at(m));
             uint dataSize = 0;
-            QAttribute::DataType dataType = typeFromGLType(mapping.type, dataSize);
+            QAttribute::VertexBaseType dataType = typeFromGLType(mapping.type, dataSize);
             QAttribute *attr(new QAttribute(m_buffer, dataType,
                                             dataSize, rowCount,
                                             offset, m_itemStride));
@@ -254,7 +257,7 @@ QStringList QItemModelBuffer::attributeNames() const
 
 QAttribute *QItemModelBuffer::attributeByName(QString nm) const
 {
-    return m_attributes.value(nm);
+    return m_attributes.value(nm, nullptr);
 }
 
 void QItemModelBuffer::onModelDataChanged(const QModelIndex& topLeft,
@@ -324,8 +327,8 @@ bool QItemModelBuffer::validateRoles()
     QHash<int, QByteArray> roles(m_model->roleNames());
     // create a lookup that's the the way round we need
     QHash<QByteArray, int> inverseRoles;
-    foreach (int r, roles.keys())
-        inverseRoles[roles.value(r)] = r;
+    for (auto it = roles.cbegin(), end = roles.cend(); it != end; ++it)
+        inverseRoles[it.value()] = it.key();
 
     for (int m=0; m<m_mappings.count(); ++m) {
         QByteArray rnm(m_mappings.at(m).roleName);

@@ -1,51 +1,56 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2015 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "renderpass_p.h"
-#include <Qt3DRender/private/annotation_p.h>
-#include <Qt3DRender/qparametermapping.h>
+#include <Qt3DRender/private/filterkey_p.h>
 #include <Qt3DRender/qrenderstate.h>
 #include <Qt3DRender/qrenderpass.h>
 #include <Qt3DRender/qparameter.h>
 
+#include <Qt3DRender/private/qrenderpass_p.h>
 #include <Qt3DRender/private/renderstates_p.h>
 #include <Qt3DRender/private/renderstateset_p.h>
 
-#include <Qt3DCore/qscenepropertychange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,79 +60,76 @@ namespace Qt3DRender {
 namespace Render {
 
 RenderPass::RenderPass()
-    : QBackendNode()
+    : BackendNode()
 {
 }
 
 RenderPass::~RenderPass()
 {
-    cleanup();
 }
 
 void RenderPass::cleanup()
 {
+    QBackendNode::setEnabled(false);
+    m_renderStates.clear();
+    m_filterKeyList.clear();
+    m_parameterPack.clear();
+    m_shaderUuid = Qt3DCore::QNodeId();
 }
 
-void RenderPass::updateFromPeer(Qt3DCore::QNode *peer)
+void RenderPass::initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change)
 {
-    QRenderPass *pass = static_cast<QRenderPass *>(peer);
-
-    m_parameterPack.clear();
-
-    if (pass->shaderProgram() != Q_NULLPTR)
-        m_shaderUuid = pass->shaderProgram()->id();
-    // The RenderPass clones frontend bindings in case the frontend ever removes them
-    // TO DO: We probably need a QParameterMapper manager
-    Q_FOREACH (QParameterMapping *binding, pass->bindings())
-        appendBinding(ParameterMapping(binding));
-    Q_FOREACH (QAnnotation *c, pass->annotations())
-        appendAnnotation(c->id());
-    Q_FOREACH (QRenderState *renderState, pass->renderStates())
-        appendRenderState(renderState->id(), RenderState::getOrCreateBackendState(renderState));
-    Q_FOREACH (QParameter *p, pass->parameters())
-        m_parameterPack.appendParameter(p->id());
+    const auto typedChange = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<QRenderPassData>>(change);
+    const auto &data = typedChange->data;
+    m_filterKeyList = data.filterKeyIds;
+    m_parameterPack.setParameters(data.parameterIds);
+    for (const auto &renderStateId : qAsConst(data.renderStateIds))
+        addRenderState(renderStateId);
+    m_shaderUuid = data.shaderId;
 }
 
 void RenderPass::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e)
 {
-    QScenePropertyChangePtr propertyChange = qSharedPointerCast<QScenePropertyChange>(e);
     switch (e->type()) {
-
-    case NodeAdded: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("annotation")) {
-            appendAnnotation(propertyChange->value().value<QNodeId>());
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("shaderProgram")) {
-            m_shaderUuid = propertyChange->value().value<QNodeId>();
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("binding")) {
-            appendBinding(ParameterMapping(propertyChange->value().value<QParameterMapping *>()));
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("renderState")) {
-            QNodePtr nodePtr = propertyChange->value().value<QNodePtr>();
-            QRenderState *renderState = static_cast<QRenderState *>(nodePtr.data());
-            appendRenderState(renderState->id(), RenderState::getOrCreateBackendState(renderState));
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("parameter")) {
-            m_parameterPack.appendParameter(propertyChange->value().value<QNodeId>());
-        }
+    case PropertyValueAdded: {
+        const auto change = qSharedPointerCast<QPropertyNodeAddedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("filterKeys"))
+            appendFilterKey(change->addedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("shaderProgram"))
+            m_shaderUuid = change->addedNodeId();
+        else if (change->propertyName() == QByteArrayLiteral("renderState"))
+            addRenderState(change->addedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("parameter"))
+            m_parameterPack.appendParameter(change->addedNodeId());
         break;
     }
 
-    case NodeRemoved: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("annotation")) {
-            removeAnnotation(propertyChange->value().value<QNodeId>());
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("shaderProgram")) {
+    case PropertyUpdated: {
+        const auto change = qSharedPointerCast<QPropertyUpdatedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("shaderProgram"))
+            m_shaderUuid = change->value().value<Qt3DCore::QNodeId>();
+        break;
+    }
+
+    case PropertyValueRemoved: {
+        const auto change = qSharedPointerCast<QPropertyNodeRemovedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("filterKeys"))
+            removeFilterKey(change->removedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("shaderProgram"))
             m_shaderUuid = QNodeId();
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("binding")) {
-            removeBinding(propertyChange->value().value<QNodeId>());
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("renderState")) {
-            removeRenderState(propertyChange->value().value<QNodeId>());
-        } else if (propertyChange->propertyName() == QByteArrayLiteral("parameter")) {
-            m_parameterPack.removeParameter(propertyChange->value().value<QNodeId>());
-        }
+        else if (change->propertyName() == QByteArrayLiteral("renderState"))
+            removeRenderState(change->removedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("parameter"))
+            m_parameterPack.removeParameter(change->removedNodeId());
         break;
     }
 
     default:
         break;
     }
+
+    BackendNode::sceneChangeEvent(e);
+    markDirty(AbstractRenderer::AllDirty);
 }
 
 Qt3DCore::QNodeId RenderPass::shaderProgram() const
@@ -135,58 +137,43 @@ Qt3DCore::QNodeId RenderPass::shaderProgram() const
     return m_shaderUuid;
 }
 
-QList<ParameterMapping> RenderPass::bindings() const
+QVector<Qt3DCore::QNodeId> RenderPass::filterKeys() const
 {
-    return m_bindings.values();
+    return m_filterKeyList;
 }
 
-QList<Qt3DCore::QNodeId> RenderPass::annotations() const
-{
-    return m_annotationList;
-}
-
-QList<RenderState *> RenderPass::renderStates() const
-{
-    return m_renderStates.values();
-}
-
-QList<Qt3DCore::QNodeId> RenderPass::parameters() const
+QVector<Qt3DCore::QNodeId> RenderPass::parameters() const
 {
     return m_parameterPack.parameters();
 }
 
-void RenderPass::appendAnnotation(const Qt3DCore::QNodeId &annotationId)
+QVector<QNodeId> RenderPass::renderStates() const
 {
-    if (!m_annotationList.contains(annotationId))
-        m_annotationList.append(annotationId);
+    return m_renderStates;
 }
 
-void RenderPass::removeAnnotation(const Qt3DCore::QNodeId &annotationId)
+void RenderPass::appendFilterKey(Qt3DCore::QNodeId filterKeyId)
 {
-    m_annotationList.removeOne(annotationId);
+    if (!m_filterKeyList.contains(filterKeyId))
+        m_filterKeyList.append(filterKeyId);
 }
 
-void RenderPass::appendBinding(const ParameterMapping &binding)
+void RenderPass::removeFilterKey(Qt3DCore::QNodeId filterKeyId)
 {
-    if (!m_bindings.contains(binding.id()))
-        m_bindings[binding.id()] = binding;
+    m_filterKeyList.removeOne(filterKeyId);
 }
 
-void RenderPass::removeBinding(const Qt3DCore::QNodeId &bindingId)
+void RenderPass::addRenderState(QNodeId renderStateId)
 {
-    m_bindings.remove(bindingId);
+    if (!m_renderStates.contains(renderStateId))
+        m_renderStates.push_back(renderStateId);
 }
 
-void RenderPass::appendRenderState(const Qt3DCore::QNodeId &id, RenderState *renderState)
+void RenderPass::removeRenderState(QNodeId renderStateId)
 {
-    if (!m_renderStates.contains(id))
-        m_renderStates[id] = renderState;
+    m_renderStates.removeOne(renderStateId);
 }
 
-void RenderPass::removeRenderState(const Qt3DCore::QNodeId &renderStateId)
-{
-    m_renderStates.remove(renderStateId);
-}
 
 } // namespace Render
 } // namespace Qt3DRender

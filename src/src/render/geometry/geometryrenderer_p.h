@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,21 +51,22 @@
 // We mean it.
 //
 
-#include <Qt3DCore/qbackendnode.h>
+#include <Qt3DRender/private/backendnode_p.h>
 #include <Qt3DRender/qgeometryrenderer.h>
-#include <Qt3DRender/qgeometryfunctor.h>
+#include <Qt3DRender/qgeometryfactory.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DRender {
-
+namespace RayCasting {
 class QBoundingVolume;
+}
 
 namespace Render {
 
 class GeometryRendererManager;
 
-class Q_AUTOTEST_EXPORT GeometryRenderer : public Qt3DCore::QBackendNode
+class Q_AUTOTEST_EXPORT GeometryRenderer : public BackendNode
 {
 public:
     GeometryRenderer();
@@ -70,53 +74,57 @@ public:
 
     void cleanup();
     void setManager(GeometryRendererManager *manager);
-    void updateFromPeer(Qt3DCore::QNode *peer) Q_DECL_OVERRIDE;
     void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e) Q_DECL_OVERRIDE;
     void executeFunctor();
 
     inline Qt3DCore::QNodeId geometryId() const { return m_geometryId; }
     inline int instanceCount() const { return m_instanceCount; }
-    inline int primitiveCount() const { return m_primitiveCount; }
-    inline int baseVertex() const { return m_baseVertex; }
-    inline int baseInstance() const { return m_baseInstance; }
-    inline int restartIndex() const { return m_restartIndex; }
-    inline bool primitiveRestart() const { return m_primitiveRestart; }
+    inline int vertexCount() const { return m_vertexCount; }
+    inline int indexOffset() const { return m_indexOffset; }
+    inline int firstInstance() const { return m_firstInstance; }
+    inline int firstVertex() const { return m_firstVertex; }
+    inline int restartIndexValue() const { return m_restartIndexValue; }
+    inline int verticesPerPatch() const { return m_verticesPerPatch; }
+    inline bool primitiveRestartEnabled() const { return m_primitiveRestartEnabled; }
     inline QGeometryRenderer::PrimitiveType primitiveType() const { return m_primitiveType; }
     inline bool isDirty() const { return m_dirty; }
-    inline bool isEnabled() const { return m_enabled; }
-    inline QGeometryFunctorPtr geometryFunctor() const { return m_functor; }
+    inline QGeometryFactoryPtr geometryFactory() const { return m_geometryFactory; }
     void unsetDirty();
 
     // Build triangle data Job thread
-    void setTriangleVolumes(const  QVector<QBoundingVolume *> &volumes);
+    void setTriangleVolumes(const  QVector<RayCasting::QBoundingVolume *> &volumes);
     // Pick volumes job
-    QVector<QBoundingVolume *> triangleData() const;
+    QVector<RayCasting::QBoundingVolume *> triangleData() const;
 
 private:
+    void initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change) Q_DECL_FINAL;
+
     Qt3DCore::QNodeId m_geometryId;
     int m_instanceCount;
-    int m_primitiveCount;
-    int m_baseVertex;
-    int m_baseInstance;
-    int m_restartIndex;
-    bool m_primitiveRestart;
+    int m_vertexCount;
+    int m_indexOffset;
+    int m_firstInstance;
+    int m_firstVertex;
+    int m_restartIndexValue;
+    int m_verticesPerPatch;
+    bool m_primitiveRestartEnabled;
     QGeometryRenderer::PrimitiveType m_primitiveType;
     bool m_dirty;
-    bool m_enabled;
-    QGeometryFunctorPtr m_functor;
+    QGeometryFactoryPtr m_geometryFactory;
     GeometryRendererManager *m_manager;
-    QVector<QBoundingVolume *> m_triangleVolumes;
+    QVector<RayCasting::QBoundingVolume *> m_triangleVolumes;
 };
 
-class GeometryRendererFunctor : public Qt3DCore::QBackendNodeFunctor
+class GeometryRendererFunctor : public Qt3DCore::QBackendNodeMapper
 {
 public:
-    explicit GeometryRendererFunctor(GeometryRendererManager *manager);
-    Qt3DCore::QBackendNode *create(Qt3DCore::QNode *frontend, const Qt3DCore::QBackendNodeFactory *factory) const Q_DECL_OVERRIDE;
-    Qt3DCore::QBackendNode *get(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE;
-    void destroy(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE;
+    explicit GeometryRendererFunctor(AbstractRenderer *renderer, GeometryRendererManager *manager);
+    Qt3DCore::QBackendNode *create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const Q_DECL_OVERRIDE;
+    Qt3DCore::QBackendNode *get(Qt3DCore::QNodeId id) const Q_DECL_OVERRIDE;
+    void destroy(Qt3DCore::QNodeId id) const Q_DECL_OVERRIDE;
 private:
     GeometryRendererManager *m_manager;
+    AbstractRenderer *m_renderer;
 };
 
 } // namespace Render

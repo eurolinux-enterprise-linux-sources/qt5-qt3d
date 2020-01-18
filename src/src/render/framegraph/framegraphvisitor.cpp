@@ -1,34 +1,38 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 Paul Lemire
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -38,6 +42,8 @@
 
 #include "framegraphnode_p.h"
 #include <Qt3DRender/private/renderer_p.h>
+#include <Qt3DRender/private/managers_p.h>
+#include <QThreadPool>
 
 QT_BEGIN_NAMESPACE
 
@@ -46,31 +52,24 @@ using namespace Qt3DCore;
 namespace Qt3DRender {
 namespace Render {
 
-FrameGraphVisitor::FrameGraphVisitor()
-    : m_renderer(Q_NULLPTR)
-    , m_jobs(Q_NULLPTR)
-    , m_renderviewIndex(0)
-
+FrameGraphVisitor::FrameGraphVisitor(const FrameGraphManager *manager)
+    : m_manager(manager)
 {
+    m_leaves.reserve(8);
 }
 
-void FrameGraphVisitor::traverse(FrameGraphNode *root,
-                                 Renderer *renderer,
-                                 QVector<Qt3DCore::QAspectJobPtr> *jobs)
+QVector<FrameGraphNode *> FrameGraphVisitor::traverse(FrameGraphNode *root)
 {
-    m_renderer = renderer;
-    m_jobs = jobs;
-    m_renderviewIndex = 0;
+    m_leaves.clear();
 
-    Q_ASSERT(m_renderer);
-    Q_ASSERT(m_jobs);
     Q_ASSERT_X(root, Q_FUNC_INFO, "The FrameGraphRoot is null");
 
     // Kick off the traversal
     Render::FrameGraphNode *node = root;
-    if (node == Q_NULLPTR)
+    if (node == nullptr)
         qCritical() << Q_FUNC_INFO << "FrameGraph is null";
     visit(node);
+    return m_leaves;
 }
 
 void FrameGraphVisitor::visit(Render::FrameGraphNode *node)
@@ -82,15 +81,16 @@ void FrameGraphVisitor::visit(Render::FrameGraphNode *node)
 
     // Recurse to children (if we have any), otherwise if this is a leaf node,
     // initiate a rendering from the current camera
-    Q_FOREACH (Render::FrameGraphNode *n, node->children())
-        visit(n);
+    const QVector<Qt3DCore::QNodeId> fgChildIds = node->childrenIds();
+
+    for (const Qt3DCore::QNodeId fgChildId : fgChildIds)
+        visit(m_manager->lookupNode(fgChildId));
+
     // Leaf node - create a RenderView ready to be populated
     // TODO: Pass in only framegraph config that has changed from previous
     // index RenderViewJob.
-    if (node->childrenHandles().empty()) {
-        QAspectJobPtr job = m_renderer->createRenderViewJob(node, m_renderviewIndex++);
-        m_jobs->append(job);
-    }
+    if (fgChildIds.empty())
+        m_leaves.push_back(node);
 }
 
 } // namespace Render

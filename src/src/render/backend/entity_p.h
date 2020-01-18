@@ -1,35 +1,38 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2015 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -49,10 +52,11 @@
 // We mean it.
 //
 
+#include <Qt3DRender/private/backendnode_p.h>
 #include <Qt3DRender/private/renderer_p.h>
 #include <Qt3DRender/private/handle_types_p.h>
-#include <Qt3DCore/qbackendnode.h>
-#include <Qt3DCore/qnodeid.h>
+#include <Qt3DCore/qnodecreatedchange.h>
+#include <Qt3DCore/private/qentity_p.h>
 #include <Qt3DCore/private/qhandle_p.h>
 #include <QVector>
 
@@ -76,7 +80,7 @@ class Sphere;
 class Renderer;
 class NodeManagers;
 
-class Q_AUTOTEST_EXPORT Entity : public Qt3DCore::QBackendNode
+class Q_AUTOTEST_EXPORT Entity : public BackendNode
 {
 public:
     Entity();
@@ -86,7 +90,6 @@ public:
     void setParentHandle(HEntity parentHandle);
     void setNodeManagers(NodeManagers *manager);
     void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e) Q_DECL_OVERRIDE;
-    void updateFromPeer(Qt3DCore::QNode *peer) Q_DECL_OVERRIDE;
 
     void dump() const;
 
@@ -96,7 +99,7 @@ public:
     HEntity parentHandle() const { return m_parentHandle; }
 
     void appendChildHandle(HEntity childHandle);
-    void removeChildHandle(HEntity childHandle);
+    void removeChildHandle(HEntity childHandle) { m_childrenHandles.removeOne(childHandle); }
     QVector<HEntity> childrenHandles() const { return m_childrenHandles; }
     QVector<Entity *> children() const;
     bool hasChildren() const { return !m_childrenHandles.empty(); }
@@ -108,13 +111,14 @@ public:
     Sphere *worldBoundingVolumeWithChildren() const { return m_worldBoundingVolumeWithChildren.data(); }
 
     void addComponent(Qt3DCore::QComponent *component);
-    void removeComponent(const Qt3DCore::QNodeId &nodeId);
-
-    bool isEnabled() const;
-    void setEnabled(bool isEnabled);
+    void addComponent(Qt3DCore::QNodeIdTypePair idAndType);
+    void removeComponent(Qt3DCore::QNodeId nodeId);
 
     bool isBoundingVolumeDirty() const;
     void unsetBoundingVolumeDirty();
+
+    void setTreeEnabled(bool enabled) { m_treeEnabled = enabled; }
+    bool isTreeEnabled() const { return m_treeEnabled; }
 
     template<class Backend, uint INDEXBITS>
     Qt3DCore::QHandle<Backend, INDEXBITS> componentHandle() const
@@ -123,21 +127,21 @@ public:
     }
 
     template<class Backend, uint INDEXBITS>
-    QList<Qt3DCore::QHandle<Backend, INDEXBITS> > componentsHandle() const
+    QVector<Qt3DCore::QHandle<Backend, INDEXBITS> > componentsHandle() const
     {
-        return QList<Qt3DCore::QHandle<Backend, INDEXBITS> >();
+        return QVector<Qt3DCore::QHandle<Backend, INDEXBITS> >();
     }
 
     template<class Backend>
     Backend *renderComponent() const
     {
-        return Q_NULLPTR;
+        return nullptr;
     }
 
     template<class Backend>
-    QList<Backend *> renderComponents() const
+    QVector<Backend *> renderComponents() const
     {
-        return QList<Backend *>();
+        return QVector<Backend *>();
     }
 
     template<class Backend>
@@ -147,12 +151,27 @@ public:
     }
 
     template<class Backend>
-    QList<Qt3DCore::QNodeId> componentsUuid() const
+    QVector<Qt3DCore::QNodeId> componentsUuid() const
     {
-        return QList<Qt3DCore::QNodeId>();
+        return QVector<Qt3DCore::QNodeId>();
     }
 
+    template<typename T>
+    bool containsComponentsOfType() const
+    {
+        return !componentUuid<T>().isNull();
+    }
+
+    template<typename T, typename Ts, typename ... Ts2>
+    bool containsComponentsOfType() const
+    {
+        return containsComponentsOfType<T>() && containsComponentsOfType<Ts, Ts2...>();
+    }
+
+
 private:
+    void initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change) Q_DECL_FINAL;
+
     NodeManagers *m_nodeManagers;
     HEntity m_handle;
     HEntity m_parentHandle;
@@ -167,16 +186,20 @@ private:
     Qt3DCore::QNodeId m_transformComponent;
     Qt3DCore::QNodeId m_materialComponent;
     Qt3DCore::QNodeId m_cameraComponent;
-    QList<Qt3DCore::QNodeId> m_layerComponents;
-    QList<Qt3DCore::QNodeId> m_shaderDataComponents;
-    QList<Qt3DCore::QNodeId> m_lightComponents;
+    QVector<Qt3DCore::QNodeId> m_layerComponents;
+    QVector<Qt3DCore::QNodeId> m_levelOfDetailComponents;
+    QVector<Qt3DCore::QNodeId> m_shaderDataComponents;
+    QVector<Qt3DCore::QNodeId> m_lightComponents;
+    QVector<Qt3DCore::QNodeId> m_environmentLightComponents;
     Qt3DCore::QNodeId m_geometryRendererComponent;
     Qt3DCore::QNodeId m_objectPickerComponent;
     Qt3DCore::QNodeId m_boundingVolumeDebugComponent;
+    Qt3DCore::QNodeId m_computeComponent;
 
     QString m_objectName;
-    bool m_enabled;
     bool m_boundingDirty;
+    // true only if this and all parent nodes are enabled
+    bool m_treeEnabled;
 };
 
 // Handles
@@ -196,16 +219,25 @@ template<>
 Q_AUTOTEST_EXPORT HObjectPicker Entity::componentHandle<ObjectPicker>() const;
 
 template<>
-QList<HLayer> Entity::componentsHandle<Layer>() const;
+QVector<HLayer> Entity::componentsHandle<Layer>() const;
 
 template<>
-QList<HShaderData> Entity::componentsHandle<ShaderData>() const;
+QVector<HLevelOfDetail> Entity::componentsHandle<LevelOfDetail>() const;
 
 template<>
-Q_AUTOTEST_EXPORT HBoundingVolumeDebug Entity::componentHandle<BoundingVolumeDebug>() const;
+QVector<HShaderData> Entity::componentsHandle<ShaderData>() const;
+
+//template<>
+//Q_AUTOTEST_EXPORT HBoundingVolumeDebug Entity::componentHandle<BoundingVolumeDebug>() const;
 
 template<>
-QList<HLight> Entity::componentsHandle<Light>() const;
+QVector<HLight> Entity::componentsHandle<Light>() const;
+
+template<>
+QVector<HEnvironmentLight> Entity::componentsHandle<EnvironmentLight>() const;
+
+template<>
+Q_AUTOTEST_EXPORT HComputeCommand Entity::componentHandle<ComputeCommand>() const;
 
 // Render components
 template<>
@@ -218,22 +250,31 @@ template<>
 Transform *Entity::renderComponent<Transform>() const;
 
 template<>
-Q_AUTOTEST_EXPORT GeometryRenderer *Entity::renderComponent<GeometryRenderer>() const;
+QT3DRENDERSHARED_PRIVATE_EXPORT GeometryRenderer *Entity::renderComponent<GeometryRenderer>() const;
 
 template<>
-Q_AUTOTEST_EXPORT ObjectPicker *Entity::renderComponent<ObjectPicker>() const;
+QT3DRENDERSHARED_PRIVATE_EXPORT ObjectPicker *Entity::renderComponent<ObjectPicker>() const;
 
 template<>
-QList<Layer *> Entity::renderComponents<Layer>() const;
+QVector<Layer *> Entity::renderComponents<Layer>() const;
 
 template<>
-QList<ShaderData *> Entity::renderComponents<ShaderData>() const;
+QVector<LevelOfDetail *> Entity::renderComponents<LevelOfDetail>() const;
 
 template<>
-Q_AUTOTEST_EXPORT BoundingVolumeDebug *Entity::renderComponent<BoundingVolumeDebug>() const;
+QVector<ShaderData *> Entity::renderComponents<ShaderData>() const;
+
+//template<>
+//Q_AUTOTEST_EXPORT BoundingVolumeDebug *Entity::renderComponent<BoundingVolumeDebug>() const;
 
 template<>
-QList<Light *> Entity::renderComponents<Light>() const;
+QVector<Light *> Entity::renderComponents<Light>() const;
+
+template<>
+QVector<EnvironmentLight *> Entity::renderComponents<EnvironmentLight>() const;
+
+template<>
+Q_AUTOTEST_EXPORT ComputeCommand *Entity::renderComponent<ComputeCommand>() const;
 
 // UUid
 template<>
@@ -246,33 +287,43 @@ template<>
 Q_AUTOTEST_EXPORT Qt3DCore::QNodeId Entity::componentUuid<Material>() const;
 
 template<>
-Q_AUTOTEST_EXPORT QList<Qt3DCore::QNodeId> Entity::componentsUuid<Layer>() const;
+Q_AUTOTEST_EXPORT QVector<Qt3DCore::QNodeId> Entity::componentsUuid<Layer>() const;
 
 template<>
-Q_AUTOTEST_EXPORT QList<Qt3DCore::QNodeId> Entity::componentsUuid<ShaderData>() const;
+Q_AUTOTEST_EXPORT QVector<Qt3DCore::QNodeId> Entity::componentsUuid<LevelOfDetail>() const;
 
 template<>
-Q_AUTOTEST_EXPORT Qt3DCore::QNodeId Entity::componentUuid<GeometryRenderer>() const;
+Q_AUTOTEST_EXPORT QVector<Qt3DCore::QNodeId> Entity::componentsUuid<ShaderData>() const;
 
 template<>
-Q_AUTOTEST_EXPORT Qt3DCore::QNodeId Entity::componentUuid<ObjectPicker>() const;
+QT3DRENDERSHARED_PRIVATE_EXPORT Qt3DCore::QNodeId Entity::componentUuid<GeometryRenderer>() const;
 
 template<>
-Q_AUTOTEST_EXPORT Qt3DCore::QNodeId Entity::componentUuid<BoundingVolumeDebug>() const;
+QT3DRENDERSHARED_PRIVATE_EXPORT Qt3DCore::QNodeId Entity::componentUuid<ObjectPicker>() const;
+
+//template<>
+//Q_AUTOTEST_EXPORT Qt3DCore::QNodeId Entity::componentUuid<BoundingVolumeDebug>() const;
 
 template<>
-Q_AUTOTEST_EXPORT QList<Qt3DCore::QNodeId> Entity::componentsUuid<Light>() const;
+Q_AUTOTEST_EXPORT Qt3DCore::QNodeId Entity::componentUuid<ComputeCommand>() const;
 
-class RenderEntityFunctor : public Qt3DCore::QBackendNodeFunctor
+template<>
+Q_AUTOTEST_EXPORT QVector<Qt3DCore::QNodeId> Entity::componentsUuid<Light>() const;
+
+template<>
+Q_AUTOTEST_EXPORT QVector<Qt3DCore::QNodeId> Entity::componentsUuid<EnvironmentLight>() const;
+
+class RenderEntityFunctor : public Qt3DCore::QBackendNodeMapper
 {
 public:
-    explicit RenderEntityFunctor(NodeManagers *manager);
-    Qt3DCore::QBackendNode *create(Qt3DCore::QNode *frontend, const Qt3DCore::QBackendNodeFactory *factory) const Q_DECL_OVERRIDE;
-    Qt3DCore::QBackendNode *get(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE;
-    void destroy(const Qt3DCore::QNodeId &id) const Q_DECL_OVERRIDE;
+    explicit RenderEntityFunctor(AbstractRenderer *renderer, NodeManagers *manager);
+    Qt3DCore::QBackendNode *create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const Q_DECL_OVERRIDE;
+    Qt3DCore::QBackendNode *get(Qt3DCore::QNodeId id) const Q_DECL_OVERRIDE;
+    void destroy(Qt3DCore::QNodeId id) const Q_DECL_OVERRIDE;
 
 private:
     NodeManagers *m_nodeManagers;
+    AbstractRenderer *m_renderer;
 };
 
 } // namespace Render

@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -41,10 +44,16 @@
 #include <Qt3DRender/qtechnique.h>
 #include <Qt3DRender/qgraphicsapifilter.h>
 #include <Qt3DRender/private/renderer_p.h>
-#include <Qt3DRender/private/annotation_p.h>
+#include <Qt3DRender/private/filterkey_p.h>
+#include <Qt3DRender/private/qtechnique_p.h>
 #include <Qt3DRender/private/shader_p.h>
 #include <Qt3DCore/private/qchangearbiter_p.h>
-#include <Qt3DCore/qscenepropertychange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
+#include <Qt3DRender/private/managers_p.h>
+#include <Qt3DRender/private/techniquemanager_p.h>
+#include <Qt3DRender/private/nodemanagers_p.h>
 
 #include <QDebug>
 
@@ -56,8 +65,9 @@ namespace Qt3DRender {
 namespace Render {
 
 Technique::Technique()
-    : QBackendNode()
-    , m_graphicsApiFilter(Q_NULLPTR)
+    : BackendNode()
+    , m_isCompatibleWithRenderer(false)
+    , m_nodeManager(nullptr)
 {
 }
 
@@ -68,123 +78,184 @@ Technique::~Technique()
 
 void Technique::cleanup()
 {
-    if (m_graphicsApiFilter)
-        delete m_graphicsApiFilter;
-    m_graphicsApiFilter = Q_NULLPTR;
-}
-
-void Technique::updateFromPeer(Qt3DCore::QNode *peer)
-{
+    QBackendNode::setEnabled(false);
     m_parameterPack.clear();
     m_renderPasses.clear();
-    m_annotationList.clear();
+    m_filterKeyList.clear();
+    m_isCompatibleWithRenderer = false;
+}
 
-    if (m_graphicsApiFilter == Q_NULLPTR)
-        m_graphicsApiFilter = new QGraphicsApiFilter();
+void Technique::initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change)
+{
+    const auto typedChange = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<QTechniqueData>>(change);
+    const QTechniqueData &data = typedChange->data;
 
-    QTechnique *technique = static_cast<QTechnique *>(peer);
-
-    if (technique != Q_NULLPTR) {
-        Q_FOREACH (QParameter *p, technique->parameters())
-            m_parameterPack.appendParameter(p->id());
-        Q_FOREACH (QRenderPass *rPass, technique->renderPasses())
-            appendRenderPass(rPass->id());
-        Q_FOREACH (QAnnotation *annotation, technique->annotations())
-            appendAnnotation(annotation->id());
-
-        // Copy GraphicsApiFilter info from frontend GraphicsApiFilter
-        QGraphicsApiFilter *peerFilter = technique->graphicsApiFilter();
-        m_graphicsApiFilter->copy(*peerFilter);
-    }
+    m_graphicsApiFilterData = data.graphicsApiFilterData;
+    m_filterKeyList = data.filterKeyIds;
+    m_parameterPack.setParameters(data.parameterIds);
+    m_renderPasses = data.renderPassIds;
+    m_nodeManager->techniqueManager()->addDirtyTechnique(peerId());
 }
 
 void Technique::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e)
 {
-    QScenePropertyChangePtr propertyChange = qSharedPointerCast<QScenePropertyChange>(e);
     switch (e->type()) {
-
-    case NodeUpdated: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("graphicsApiFilter")) {
-            QGraphicsApiFilter *filter = propertyChange->value().value<QGraphicsApiFilter *>();
-            if (filter != Q_NULLPTR) {
-                m_graphicsApiFilter->copy(*filter);
-                delete filter;
-            }
+    case PropertyUpdated: {
+        const auto change = qSharedPointerCast<QPropertyUpdatedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("graphicsApiFilterData")) {
+            GraphicsApiFilterData filterData = change->value().value<GraphicsApiFilterData>();
+            m_graphicsApiFilterData = filterData;
+            // Notify the manager that our graphicsApiFilterData has changed
+            // and that we therefore need to be check for compatibility again
+            m_isCompatibleWithRenderer = false;
+            m_nodeManager->techniqueManager()->addDirtyTechnique(peerId());
         }
         break;
     }
 
-    case NodeAdded: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("pass")) {
-            appendRenderPass(propertyChange->value().value<QNodeId>());
-        }
-        else if (propertyChange->propertyName() == QByteArrayLiteral("parameter")) {
-            m_parameterPack.appendParameter(propertyChange->value().value<QNodeId>());
-        }
-        else if (propertyChange->propertyName() == QByteArrayLiteral("annotation")) {
-            appendAnnotation(propertyChange->value().value<QNodeId>());
-        }
+    case PropertyValueAdded: {
+        const auto change = qSharedPointerCast<QPropertyNodeAddedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("pass"))
+            appendRenderPass(change->addedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("parameter"))
+            m_parameterPack.appendParameter(change->addedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("filterKeys"))
+            appendFilterKey(change->addedNodeId());
         break;
     }
 
-    case NodeRemoved: {
-        if (propertyChange->propertyName() == QByteArrayLiteral("pass")) {
-            removeRenderPass(propertyChange->value().value<QNodeId>());
-        }
-        else if (propertyChange->propertyName() == QByteArrayLiteral("parameter")) {
-            m_parameterPack.removeParameter(propertyChange->value().value<QNodeId>());
-        }
-        else if (propertyChange->propertyName() == QByteArrayLiteral("annotation")) {
-            removeAnnotation(propertyChange->value().value<QNodeId>());
-        }
+    case PropertyValueRemoved: {
+        const auto change = qSharedPointerCast<QPropertyNodeRemovedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("pass"))
+            removeRenderPass(change->removedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("parameter"))
+            m_parameterPack.removeParameter(change->removedNodeId());
+        else if (change->propertyName() == QByteArrayLiteral("filterKeys"))
+            removeFilterKey(change->removedNodeId());
         break;
     }
 
     default:
         break;
     }
+    markDirty(AbstractRenderer::AllDirty);
+    BackendNode::sceneChangeEvent(e);
 }
 
-QList<Qt3DCore::QNodeId> Technique::parameters() const
+QVector<Qt3DCore::QNodeId> Technique::parameters() const
 {
     return m_parameterPack.parameters();
 }
 
-void Technique::appendRenderPass(const Qt3DCore::QNodeId &renderPassId)
+void Technique::appendRenderPass(Qt3DCore::QNodeId renderPassId)
 {
     if (!m_renderPasses.contains(renderPassId))
         m_renderPasses.append(renderPassId);
 }
 
-void Technique::removeRenderPass(const Qt3DCore::QNodeId &renderPassId)
+void Technique::removeRenderPass(Qt3DCore::QNodeId renderPassId)
 {
     m_renderPasses.removeOne(renderPassId);
 }
 
-QList<Qt3DCore::QNodeId> Technique::annotations() const
+QVector<Qt3DCore::QNodeId> Technique::filterKeys() const
 {
-    return m_annotationList;
+    return m_filterKeyList;
 }
 
-QList<Qt3DCore::QNodeId> Technique::renderPasses() const
+QVector<Qt3DCore::QNodeId> Technique::renderPasses() const
 {
     return m_renderPasses;
 }
 
-QGraphicsApiFilter *Technique::graphicsApiFilter() const
+const GraphicsApiFilterData *Technique::graphicsApiFilter() const
 {
-    return m_graphicsApiFilter;
+    return &m_graphicsApiFilterData;
 }
 
-void Technique::appendAnnotation(const Qt3DCore::QNodeId &criterionId)
+bool Technique::isCompatibleWithRenderer() const
 {
-    if (!m_annotationList.contains(criterionId))
-        m_annotationList.append(criterionId);
+    return m_isCompatibleWithRenderer;
 }
 
-void Technique::removeAnnotation(const Qt3DCore::QNodeId &criterionId)
+void Technique::setCompatibleWithRenderer(bool compatible)
 {
-    m_annotationList.removeOne(criterionId);
+    m_isCompatibleWithRenderer = compatible;
+}
+
+bool Technique::isCompatibleWithFilters(const QNodeIdVector &filterKeyIds)
+{
+    // There is a technique filter so we need to check for a technique with suitable criteria.
+    // Check for early bail out if the technique doesn't have sufficient number of criteria and
+    // can therefore never satisfy the filter
+    if (m_filterKeyList.size() < filterKeyIds.size())
+        return false;
+
+    // Iterate through the filter criteria and for each one search for a criteria on the
+    // technique that satisfies it
+    for (const QNodeId filterKeyId : filterKeyIds) {
+        FilterKey *filterKey = m_nodeManager->filterKeyManager()->lookupResource(filterKeyId);
+
+        bool foundMatch = false;
+
+        for (const QNodeId techniqueFilterKeyId : qAsConst(m_filterKeyList)) {
+            FilterKey *techniqueFilterKey = m_nodeManager->filterKeyManager()->lookupResource(techniqueFilterKeyId);
+            if ((foundMatch = (*techniqueFilterKey == *filterKey)))
+                break;
+        }
+
+        // No match for TechniqueFilter criterion in any of the technique's criteria.
+        // So no way this can match. Don't bother checking the rest of the criteria.
+        if (!foundMatch)
+            return false;
+    }
+    return true;
+}
+
+void Technique::setNodeManager(NodeManagers *nodeManager)
+{
+    m_nodeManager = nodeManager;
+}
+
+NodeManagers *Technique::nodeManager() const
+{
+    return m_nodeManager;
+}
+
+void Technique::appendFilterKey(Qt3DCore::QNodeId criterionId)
+{
+    if (!m_filterKeyList.contains(criterionId))
+        m_filterKeyList.append(criterionId);
+}
+
+void Technique::removeFilterKey(Qt3DCore::QNodeId criterionId)
+{
+    m_filterKeyList.removeOne(criterionId);
+}
+
+TechniqueFunctor::TechniqueFunctor(AbstractRenderer *renderer, NodeManagers *manager)
+    : m_manager(manager)
+    , m_renderer(renderer)
+{
+}
+
+QBackendNode *TechniqueFunctor::create(const QNodeCreatedChangeBasePtr &change) const
+{
+    Technique *technique = m_manager->techniqueManager()->getOrCreateResource(change->subjectId());
+    technique->setNodeManager(m_manager);
+    technique->setRenderer(m_renderer);
+    return technique;
+}
+
+QBackendNode *TechniqueFunctor::get(QNodeId id) const
+{
+    return m_manager->techniqueManager()->lookupResource(id);
+}
+
+void TechniqueFunctor::destroy(QNodeId id) const
+{
+    m_manager->techniqueManager()->releaseResource(id);
+
 }
 
 } // namespace Render

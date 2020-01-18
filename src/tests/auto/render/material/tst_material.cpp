@@ -1,53 +1,48 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include <QtTest/QTest>
+#include <qbackendnodetester.h>
 #include <Qt3DRender/private/material_p.h>
 
 #include <Qt3DRender/QMaterial>
 #include <Qt3DRender/QParameter>
 #include <Qt3DRender/QEffect>
-#include <Qt3DCore/QScenePropertyChange>
-
+#include <Qt3DCore/QPropertyUpdatedChange>
+#include <Qt3DCore/QPropertyNodeAddedChange>
+#include <Qt3DCore/QPropertyNodeRemovedChange>
+#include "testrenderer.h"
 
 using namespace Qt3DCore;
 using namespace Qt3DRender;
 using namespace Qt3DRender::Render;
 
-class tst_RenderMaterial : public QObject
+class tst_RenderMaterial : public Qt3DCore::QBackendNodeTester
 {
     Q_OBJECT
 public:
@@ -71,7 +66,7 @@ void tst_RenderMaterial::shouldHaveInitialState()
     // THEN
     QVERIFY(backend.parameters().isEmpty());
     QVERIFY(backend.effect().isNull());
-    QVERIFY(backend.isEnabled());
+    QVERIFY(!backend.isEnabled());
 }
 
 void tst_RenderMaterial::shouldHavePropertiesMirroringFromItsPeer_data()
@@ -120,7 +115,7 @@ void tst_RenderMaterial::shouldHavePropertiesMirroringFromItsPeer()
     Material backend;
 
     // GIVEN
-    backend.setPeer(frontendMaterial);
+    simulateInitialization(frontendMaterial, &backend);
 
     // THEN
     QVERIFY(backend.isEnabled() == frontendMaterial->isEnabled());
@@ -139,20 +134,21 @@ void tst_RenderMaterial::shouldHandleParametersPropertyChange()
     // GIVEN
     QScopedPointer<QParameter> parameter(new QParameter());
     Material backend;
+    TestRenderer renderer;
+    backend.setRenderer(&renderer);
 
     // WHEN
-    QScenePropertyChangePtr addChange(new QScenePropertyChange(NodeAdded, QSceneChange::Node, parameter->id()));
-    addChange->setValue(QVariant::fromValue(parameter->id()));
+    const auto addChange = Qt3DCore::QPropertyNodeAddedChangePtr::create(Qt3DCore::QNodeId(), parameter.data());
     addChange->setPropertyName("parameter");
     backend.sceneChangeEvent(addChange);
 
     // THEN
     QCOMPARE(backend.parameters().count(), 1);
     QCOMPARE(backend.parameters().first(), parameter->id());
+    QVERIFY(renderer.dirtyBits() != 0);
 
     // WHEN
-    QScenePropertyChangePtr removeChange(new QScenePropertyChange(NodeRemoved, QSceneChange::Node, parameter->id()));
-    removeChange->setValue(QVariant::fromValue(parameter->id()));
+    const auto removeChange = Qt3DCore::QPropertyNodeRemovedChangePtr::create(Qt3DCore::QNodeId(), parameter.data());
     removeChange->setPropertyName("parameter");
     backend.sceneChangeEvent(removeChange);
 
@@ -164,24 +160,27 @@ void tst_RenderMaterial::shouldHandleEnablePropertyChange()
 {
     // GIVEN
     Material backend;
+    TestRenderer renderer;
+    backend.setRenderer(&renderer);
 
     // WHEN
-    QScenePropertyChangePtr updateChange(new QScenePropertyChange(NodeUpdated, QSceneChange::Node, QNodeId()));
-    updateChange->setValue(false);
+    auto updateChange = QPropertyUpdatedChangePtr::create(QNodeId());
+    updateChange->setValue(true);
     updateChange->setPropertyName("enabled");
     backend.sceneChangeEvent(updateChange);
 
     // THEN
-    QVERIFY(!backend.isEnabled());
+    QVERIFY(backend.isEnabled());
+    QVERIFY(renderer.dirtyBits() != 0);
 
     // WHEN
-    QScenePropertyChangePtr secondUpdateChange(new QScenePropertyChange(NodeUpdated, QSceneChange::Node, QNodeId()));
-    secondUpdateChange->setValue(true);
+    auto secondUpdateChange = QPropertyUpdatedChangePtr::create(QNodeId());
+    secondUpdateChange->setValue(false);
     secondUpdateChange->setPropertyName("enabled");
     backend.sceneChangeEvent(secondUpdateChange);
 
     // THEN
-    QVERIFY(backend.isEnabled());
+    QVERIFY(!backend.isEnabled());
 
 }
 
@@ -189,9 +188,11 @@ void tst_RenderMaterial::shouldHandleEffectPropertyChange()
 {
     // GIVEN
     Material backend;
+    TestRenderer renderer;
+    backend.setRenderer(&renderer);
 
     // WHEN
-    QScenePropertyChangePtr updateChange(new Qt3DCore::QScenePropertyChange(Qt3DCore::NodeUpdated, Qt3DCore::QSceneChange::Node, Qt3DCore::QNodeId()));
+    QPropertyUpdatedChangePtr updateChange(new Qt3DCore::QPropertyUpdatedChange(Qt3DCore::QNodeId()));
     Qt3DCore::QNodeId effectId = Qt3DCore::QNodeId::createId();
     updateChange->setValue(QVariant::fromValue(effectId));
     updateChange->setPropertyName("effect");
@@ -199,6 +200,7 @@ void tst_RenderMaterial::shouldHandleEffectPropertyChange()
 
     // THEN
     QCOMPARE(backend.effect(), effectId);
+    QVERIFY(renderer.dirtyBits() != 0);
 }
 
 QTEST_APPLESS_MAIN(tst_RenderMaterial)

@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -37,7 +40,8 @@
 #include "qbuffer.h"
 #include "qbuffer_p.h"
 #include <Qt3DRender/private/renderlogging_p.h>
-#include <Qt3DCore/qscenepropertychange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
+
 
 QT_BEGIN_NAMESPACE
 
@@ -46,9 +50,11 @@ using namespace Qt3DCore;
 namespace Qt3DRender {
 
 QBufferPrivate::QBufferPrivate()
-    : QAbstractBufferPrivate()
+    : QNodePrivate()
+    , m_type(QBuffer::VertexBuffer)
     , m_usage(QBuffer::StaticDraw)
-    , m_sync(false)
+    , m_syncData(false)
+    , m_access(QBuffer::Write)
 {
 }
 
@@ -56,6 +62,9 @@ QBufferPrivate::QBufferPrivate()
  * \qmltype Buffer
  * \instantiates Qt3DRender::QBuffer
  * \inqmlmodule Qt3D.Render
+ *
+ * \brief Provides a data store for raw data to later be used as vertices or
+ * uniforms.
  */
 
 /*!
@@ -71,11 +80,11 @@ QBufferPrivate::QBufferPrivate()
  */
 
 /*!
- * \qmlproperty bool Buffer::sync
+ * \qmlproperty bool Buffer::syncData
  *
- * Holds the sync flag. When sync is true, this will force data created
- * by a Qt3DRender::QBufferFunctor to also be updated on the frontend
- * Qt3DRender::QBuffer node. By default sync is false.
+ * Holds the syncData flag. When syncData is true, this will force data created
+ * by a Qt3DRender::QBufferDataGenerator to also be updated on the frontend
+ * Qt3DRender::QBuffer node. By default syncData is false.
  *
  * \note: This has no effect if the buffer's data was set directly using the data
  * property.
@@ -83,9 +92,113 @@ QBufferPrivate::QBufferPrivate()
 
 /*!
  * \class Qt3DRender::QBuffer
+ * \inheaderfile Qt3DRender/QBuffer
  * \inmodule Qt3DRender
  *
- * \inherits Qt3DRender::QAbstractBuffer
+ * \inherits Qt3DCore::QNode
+ *
+ * \brief Provides a data store for raw data to later be used as vertices or
+ * uniforms.
+ *
+ * Data can either be provided directly using QBuffer::setData() or by
+ * specifying a generator with QBuffer::setDataGenerator() and providing a
+ * Qt3DRender::QBufferDataGeneratorPtr.
+ *
+ * When using a generator the data will be loaded asynchronously in a job. The
+ * loaded data can be read back if the QBuffer::syncData flag is set to true.
+ */
+
+/*!
+ * \fn void Qt3DRender::QBuffer::dataChanged(const QByteArray &bytes)
+ *
+ * This signal is emitted with \a bytes when data changes.
+ */
+
+/*!
+    \class Qt3DRender::QBufferDataGenerator
+    \inmodule Qt3DRender
+
+    \inherits Qt3DRender::QAbstractFunctor
+
+    \brief Provides a mechanism to generate buffer data from a job.
+
+    The Qt3DRender::QBufferDataGenerator should be subclassed to provide a way
+    to fill the data of a Qt3DRender::QBuffer. Such functors are executed at
+    runtime in a Qt 3D job (likely in parallel with many other jobs). When
+    providing a functor you must implement the operator() which will be called
+    to generate the actual data. You must make sure that you have stored copies
+    of anything you might need for it to execute properly. You should also
+    implement the operator==. It will be used to compare with other functors
+    and based on that allow the renderer to decide if a new functor should be
+    executed or not.
+
+    \note functors are useful when you can build data from a few set of
+    attributes (e.g: building a sphere from a radius property). If you already
+    have access to the buffer data, using Qt3DRender::QBuffer::setData() is
+    likely more efficient.
+
+    \code
+
+    QByteArray createSphereMeshVertexData(float radius, int rings, int slices)
+    {
+        ...
+    }
+
+    class SphereVertexDataFunctor : public QBufferDataGenerator
+    {
+    public:
+        SphereVertexDataFunctor(int rings, int slices, float radius)
+            : m_rings(rings)
+            , m_slices(slices)
+            , m_radius(radius)
+        {}
+
+        QByteArray operator ()() Q_DECL_OVERRIDE
+        {
+            return createSphereMeshVertexData(m_radius, m_rings, m_slices);
+        }
+
+        bool operator ==(const QBufferDataGenerator &other) const Q_DECL_OVERRIDE
+        {
+            const SphereVertexDataFunctor *otherFunctor = functor_cast<SphereVertexDataFunctor>(&other);
+            if (otherFunctor != nullptr)
+                return (otherFunctor->m_rings == m_rings &&
+                        otherFunctor->m_slices == m_slices &&
+                        otherFunctor->m_radius == m_radius);
+            return false;
+        }
+
+        QT3D_FUNCTOR(SphereVertexDataFunctor)
+
+    private:
+        int m_rings;
+        int m_slices;
+        float m_radius;
+    };
+
+    \endcode
+
+    The QT3D_FUNCTOR macro should be added when subclassing. This allows you to
+    use functor_cast in your comparison operator to make sure that the other
+    functor is of the same type as the one your are trying to compare against.
+*/
+
+/*!
+    \fn Qt3DRender::QBufferDataGenerator::operator()()
+
+    Should be implemented to return the buffer data as a QByteArray when called.
+  */
+
+/*!
+    \fn Qt3DRender::QBufferDataGenerator::operator ==(const QBufferDataGenerator &other) const
+
+    Should be reimplemented to return true when two generators (the one you are
+    comparing against and the \a other generator) are identical,
+    false otherwise.
+
+    \note The renderer uses this comparison to decide whether data for a buffer
+    needs to be reuploaded or not when the functor on a Qt3DRender::QBuffer
+    changes.
  */
 
 /*!
@@ -101,6 +214,12 @@ QBufferPrivate::QBufferPrivate()
  *        GL_PIXEL_PACK_BUFFER
  * \value PixelUnpackBuffer
  *        GL_PIXEL_UNPACK_BUFFER
+ * \value UniformBuffer
+ *        GL_UNIFORM_BUFFER
+ * \value ShaderStorageBuffer
+ *        GL_SHADER_STORAGE_BUFFER
+ * \value DrawIndirectBuffer
+ *        GL_DRAW_INDIRECT_BUFFER
  */
 
 /*!
@@ -129,62 +248,92 @@ QBufferPrivate::QBufferPrivate()
  */
 
 /*!
- * \typedef Qt3DRender::QBufferFunctorPtr
- * \relates QBuffer
+ * \typedef Qt3DRender::QBufferDataGeneratorPtr
+ * \relates Qt3DRender::QBuffer
  */
 
 /*!
  * Constructs a new QBuffer of buffer type \a ty with \a parent.
  */
 QBuffer::QBuffer(QBuffer::BufferType ty, QNode *parent)
-    : QAbstractBuffer(*new QBufferPrivate(), parent)
+    : QNode(*new QBufferPrivate(), parent)
 {
     Q_D(QBuffer);
     d->m_type = ty;
 }
 
 /*!
- * Destroys this buffer.
+ * \internal
  */
 QBuffer::~QBuffer()
 {
-    QAbstractBuffer::cleanup();
 }
 
 /*!
  * \internal
  */
-QBuffer::QBuffer(QBufferPrivate &dd, QBuffer::BufferType ty, QNode *parent)
-    : QAbstractBuffer(dd, parent)
+void QBuffer::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change)
+{
+    if (change->type() == PropertyUpdated) {
+        QPropertyUpdatedChangePtr e = qSharedPointerCast<QPropertyUpdatedChange>(change);
+        const QByteArray propertyName = e->propertyName();
+        if (propertyName == QByteArrayLiteral("data")) {
+            const bool blocked = blockNotifications(true);
+            setData(e->value().toByteArray());
+            blockNotifications(blocked);
+        } else if (propertyName == QByteArrayLiteral("downloadedData")) {
+            const bool blocked = blockNotifications(true);
+            setData(e->value().toByteArray());
+            blockNotifications(blocked);
+            Q_EMIT dataAvailable();
+        }
+    }
+}
+
+/*!
+ * Sets \a bytes as data.
+ */
+void QBuffer::setData(const QByteArray &bytes)
 {
     Q_D(QBuffer);
-    d->m_type = ty;
-}
-
-/*!
- * \internal
- */
-void QBuffer::copy(const QNode *ref)
-{
-    QAbstractBuffer::copy(ref);
-    const QBuffer *buffer = static_cast<const QBuffer *>(ref);
-    d_func()->m_type = buffer->d_func()->m_type;
-    d_func()->m_usage = buffer->d_func()->m_usage;
-    d_func()->m_functor = buffer->d_func()->m_functor;
-    d_func()->m_sync = buffer->d_func()->m_sync;
-}
-
-/*!
- * \internal
- */
-void QBuffer::sceneChangeEvent(const QSceneChangePtr &change)
-{
-    QScenePropertyChangePtr e = qSharedPointerCast<QScenePropertyChange>(change);
-    if (e->type() == NodeUpdated && e->propertyName() == QByteArrayLiteral("data")) {
-        const bool blocked = blockNotifications(true);
-        setData(e->value().toByteArray());
-        blockNotifications(blocked);
+    if (bytes != d->m_data) {
+        d->m_data = bytes;
+        Qt3DCore::QNodePrivate::get(this)->notifyPropertyChange("data", QVariant::fromValue(d->m_data));
+        emit dataChanged(bytes);
     }
+}
+
+/*!
+ * Updates the data by replacing it with \a bytes at \a offset.
+ */
+void QBuffer::updateData(int offset, const QByteArray &bytes)
+{
+    Q_D(QBuffer);
+    Q_ASSERT(offset >= 0 && (offset + bytes.size()) <= d->m_data.size());
+
+    // Update data
+    d->m_data.replace(offset, bytes.size(), bytes);
+    const bool blocked = blockNotifications(true);
+    emit dataChanged(d->m_data);
+    blockNotifications(blocked);
+
+    QBufferUpdate updateData;
+    updateData.offset = offset;
+    updateData.data = bytes;
+
+    auto e = QPropertyUpdatedChangePtr::create(id());
+    e->setPropertyName("updateData");
+    e->setValue(QVariant::fromValue(updateData));
+    notifyObservers(e);
+}
+
+/*!
+ * \return the data.
+ */
+QByteArray QBuffer::data() const
+{
+    Q_D(const QBuffer);
+    return d->m_data;
 }
 
 /*!
@@ -221,15 +370,15 @@ QBuffer::BufferType QBuffer::type() const
 /*!
  * Sets the buffer \a functor.
  */
-void QBuffer::setBufferFunctor(const QBufferFunctorPtr &functor)
+void QBuffer::setDataGenerator(const QBufferDataGeneratorPtr &functor)
 {
     Q_D(QBuffer);
     if (functor && d->m_functor && *functor == *d->m_functor)
         return;
     d->m_functor = functor;
-    if (d->m_changeArbiter != Q_NULLPTR) {
-        QScenePropertyChangePtr change(new QScenePropertyChange(NodeUpdated, QSceneChange::Node, id()));
-        change->setPropertyName("bufferFunctor");
+    if (d->m_changeArbiter != nullptr) {
+        auto change = QPropertyUpdatedChangePtr::create(d->m_id);
+        change->setPropertyName("dataGenerator");
         change->setValue(QVariant::fromValue(d->m_functor));
         d->notifyObservers(change);
     }
@@ -238,35 +387,50 @@ void QBuffer::setBufferFunctor(const QBufferFunctorPtr &functor)
 /*!
  * \return the buffer functor.
  */
-QBufferFunctorPtr QBuffer::bufferFunctor() const
+QBufferDataGeneratorPtr QBuffer::dataGenerator() const
 {
     Q_D(const QBuffer);
     return d->m_functor;
 }
 
 /*!
- * \property QBuffer::sync
+ * \property QBuffer::syncData
  *
- * Holds the sync flag. When sync is true, this will force data created
- * by a Qt3DRender::QBufferFunctor to also be updated on the frontend
- * Qt3DRender::QBuffer node. By default sync is false.
+ * Holds the syncData flag. When syncData is true, this will force data created
+ * by a Qt3DRender::QBufferDataGenerator to also be updated on the frontend
+ * Qt3DRender::QBuffer node. By default syncData is false.
  *
  * \note: This has no effect if the buffer's data was set directly using the data
  * property.
  */
-void QBuffer::setSync(bool sync)
+void QBuffer::setSyncData(bool syncData)
 {
     Q_D(QBuffer);
-    if (d->m_sync != sync) {
-        d->m_sync = sync;
-        emit syncChanged(sync);
+    if (d->m_syncData != syncData) {
+        d->m_syncData = syncData;
+        emit syncDataChanged(syncData);
     }
 }
 
-bool QBuffer::isSync() const
+void QBuffer::setAccessType(QBuffer::AccessType access)
+{
+    Q_D(QBuffer);
+    if (d->m_access != access) {
+        d->m_access = access;
+        Q_EMIT accessTypeChanged(access);
+    }
+}
+
+bool QBuffer::isSyncData() const
 {
     Q_D(const QBuffer);
-    return d->m_sync;
+    return d->m_syncData;
+}
+
+QBuffer::AccessType QBuffer::accessType() const
+{
+    Q_D(const QBuffer);
+    return d->m_access;
 }
 
 void QBuffer::setType(QBuffer::BufferType type)
@@ -276,6 +440,20 @@ void QBuffer::setType(QBuffer::BufferType type)
         d->m_type = type;
         emit typeChanged(type);
     }
+}
+
+Qt3DCore::QNodeCreatedChangeBasePtr QBuffer::createNodeCreationChange() const
+{
+    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QBufferData>::create(this);
+    auto &data = creationChange->data;
+    Q_D(const QBuffer);
+    data.data = d->m_data;
+    data.type = d->m_type;
+    data.usage = d->m_usage;
+    data.functor = d->m_functor;
+    data.syncData = d->m_syncData;
+    data.access = d->m_access;
+    return creationChange;
 }
 
 } // namespace Qt3DRender

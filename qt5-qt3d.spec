@@ -6,28 +6,26 @@
 
 Summary: Qt5 - Qt3D QML bindings and C++ APIs
 Name:    qt5-%{qt_module}
-Version: 5.6.2
+Version: 5.9.2
 Release: 1%{?dist}
 
 # See LICENSE.GPL LICENSE.LGPL LGPL_EXCEPTION.txt, for details
 # See also http://doc.qt.io/qt-5/licensing.html
 License: LGPLv2 with exceptions or GPLv3 with exceptions
 Url:     http://www.qt.io
-Source0: http://download.qt.io/official_releases/qt/5.6/%{version}/submodules/%{qt_module}-opensource-src-%{version}.tar.xz
+Source0: http://download.qt.io/official_releases/qt/5.9/%{version}/submodules/%{qt_module}-opensource-src-%{version}.tar.xz
 
-Patch0:  qt3d-fix-build-on-big-endian-architectures.patch
+# namespace on big endian platforms
+Patch0:  qt3d-namespace-big-endian.patch
+Patch1:  qt3d-fix-build-on-secondary-arches.patch
 
-BuildRequires:  cmake
-BuildRequires:  qt5-qtbase-static >= %{version}
-BuildRequires:  pkgconfig(Qt5Quick)
-BuildRequires:  pkgconfig(Qt5XmlPatterns)
-BuildRequires:  pkgconfig(Qt5Qml)
-BuildRequires:  pkgconfig(Qt5Network)
-BuildRequires:  pkgconfig(Qt5Core)
-BuildRequires:  pkgconfig(Qt5XmlPatterns)
-BuildRequires:  pkgconfig(Qt5OpenGL)
+BuildRequires: cmake
+BuildRequires: qt5-qtbase-static >= %{version}
+BuildRequires: qt5-qtdeclarative-devel
+BuildRequires: qt5-qtimageformats
+BuildRequires: qt5-qtxmlpatterns-devel
 
-Requires:       qt5-qtimageformats%{?_isa} >= %{version}
+Requires:      qt5-qtimageformats%{?_isa} >= %{version}
 
 %{?_qt5:Requires: %{_qt5}%{?_isa} >= %{_qt5_version}}
 
@@ -64,12 +62,11 @@ Requires: %{name}%{?_isa} = %{version}-%{release}
 %prep
 %setup -q -n %{qt_module}-opensource-src-%{version}
 
-%patch0 -p1 -b .fix-build-on-big-endian-architectures
+%patch0 -p1 -b .namespace-big-endian
+%patch1 -p1 -b .fix-build-on-secondary-arches
 
 %build
-mkdir %{_target_platform}
-pushd %{_target_platform}
-%{qmake_qt5} ..
+%{qmake_qt5}
 
 make %{?_smp_mflags}
 
@@ -79,13 +76,12 @@ make %{?_smp_mflags}
 QT_HASH_SEED=0; export QT_HASH_SEED
 make %{?_smp_mflags} docs
 %endif
-popd
 
 %install
-make install INSTALL_ROOT=%{buildroot} -C %{_target_platform}
+make install INSTALL_ROOT=%{buildroot}
 
 %if 0%{?docs}
-make install_docs INSTALL_ROOT=%{buildroot} -C %{_target_platform}
+make install_docs INSTALL_ROOT=%{buildroot}
 %endif
 
 ## .prl/.la file love
@@ -112,49 +108,82 @@ popd
 %{_qt5_libdir}/libQt53DCore.so.5*
 %{_qt5_libdir}/libQt53DLogic.so.5*
 %{_qt5_libdir}/libQt53DQuickInput.so.5*
-%{_qt5_archdatadir}/qml/Qt3D/
-%{_qt5_archdatadir}/qml/QtQuick/Scene3D
-%{_qt5_plugindir}/sceneparsers/libassimpsceneparser.so
-%{_qt5_plugindir}/sceneparsers/libgltfsceneparser.so
+%{_qt5_libdir}/libQt53DExtras.so.5*
+%{_qt5_libdir}/libQt53DAnimation.so.5*
+%{_qt5_libdir}/libQt53DQuickAnimation.so.5*
+%{_qt5_libdir}/libQt53DQuickScene2D.so.5*
+%{_qt5_libdir}/libQt53DQuickExtras.so.5*
+%{_qt5_qmldir}/Qt3D/
+%{_qt5_qmldir}/QtQuick/Scene3D/
+%{_qt5_qmldir}/QtQuick/Scene2D/
+%{_qt5_plugindir}/sceneparsers/
+%{_qt5_plugindir}/renderplugins/
+%{_qt5_plugindir}/geometryloaders/
 
 %files devel
 %{_qt5_bindir}/qgltf
 %{_qt5_libdir}/libQt53DQuick.so
 %{_qt5_libdir}/libQt53DQuick.prl
 %{_qt5_libdir}/cmake/Qt53DQuick
-%{_qt5_headerdir}/Qt3DQuick
+%{_qt5_includedir}/Qt3DQuick
 %{_qt5_libdir}/pkgconfig/Qt53DQuick.pc
 %{_qt5_libdir}/libQt53DInput.so
 %{_qt5_libdir}/libQt53DInput.prl
 %{_qt5_libdir}/cmake/Qt53DInput
-%{_qt5_headerdir}/Qt3DInput/
+%{_qt5_includedir}/Qt3DInput/
 %{_qt5_libdir}/pkgconfig/Qt53DInput.pc
 %{_qt5_libdir}/libQt53DCore.so
 %{_qt5_libdir}/libQt53DCore.prl
 %{_qt5_libdir}/cmake/Qt53DCore/
-%{_qt5_headerdir}/Qt3DCore/
+%{_qt5_includedir}/Qt3DCore/
 %{_qt5_libdir}/pkgconfig/Qt53DCore.pc
 %{_qt5_libdir}/libQt53DQuickRender.so
 %{_qt5_libdir}/libQt53DQuickRender.prl
 %{_qt5_libdir}/cmake/Qt53DQuickRender/
-%{_qt5_headerdir}/Qt3DQuickRender/
+%{_qt5_includedir}/Qt3DQuickRender/
 %{_qt5_libdir}/pkgconfig/Qt53DQuickRender.pc
 %{_qt5_libdir}/libQt53DRender.so
 %{_qt5_libdir}/libQt53DRender.prl
 %{_qt5_libdir}/cmake/Qt53DRender/
-%{_qt5_headerdir}/Qt3DRender/
+%{_qt5_includedir}/Qt3DRender/
 %{_qt5_libdir}/pkgconfig/Qt53DRender.pc
 %{_qt5_archdatadir}/mkspecs/modules/*.pri
 %{_qt5_libdir}/libQt53DLogic.so
 %{_qt5_libdir}/libQt53DLogic.prl
-%{_qt5_headerdir}/Qt3DLogic/
+%{_qt5_includedir}/Qt3DLogic/
 %{_qt5_libdir}/cmake/Qt53DLogic
 %{_qt5_libdir}/pkgconfig/Qt53DLogic.pc
 %{_qt5_libdir}/libQt53DQuickInput.so
 %{_qt5_libdir}/libQt53DQuickInput.prl
-%{_qt5_headerdir}/Qt3DQuickInput/
+%{_qt5_includedir}/Qt3DQuickInput/
 %{_qt5_libdir}/cmake/Qt53DQuickInput
 %{_qt5_libdir}/pkgconfig/Qt53DQuickInput.pc
+%{_qt5_libdir}/libQt53DExtras.so
+%{_qt5_libdir}/libQt53DExtras.prl
+%{_qt5_libdir}/cmake/Qt53DExtras
+%{_qt5_includedir}/Qt3DExtras
+%{_qt5_libdir}/pkgconfig/Qt53DExtras.pc
+%{_qt5_libdir}/libQt53DQuickExtras.so
+%{_qt5_libdir}/libQt53DQuickExtras.prl
+%{_qt5_libdir}/cmake/Qt53DQuickExtras
+%{_qt5_includedir}/Qt3DQuickExtras
+%{_qt5_libdir}/pkgconfig/Qt53DQuickExtras.pc
+%{_qt5_libdir}/libQt53DAnimation.so
+%{_qt5_libdir}/libQt53DAnimation.prl
+%{_qt5_libdir}/cmake/Qt53DAnimation
+%{_qt5_includedir}/Qt3DAnimation
+%{_qt5_libdir}/pkgconfig/Qt53DAnimation.pc
+%{_qt5_libdir}/libQt53DQuickAnimation.so
+%{_qt5_libdir}/libQt53DQuickAnimation.prl
+%{_qt5_libdir}/cmake/Qt53DQuickAnimation
+%{_qt5_includedir}/Qt3DQuickAnimation
+%{_qt5_libdir}/pkgconfig/Qt53DQuickAnimation.pc
+%{_qt5_libdir}/libQt53DQuickScene2D.so
+%{_qt5_libdir}/libQt53DQuickScene2D.prl
+%{_qt5_libdir}/cmake/Qt53DQuickScene2D
+%{_qt5_includedir}/Qt3DQuickScene2D
+%{_qt5_libdir}/pkgconfig/Qt53DQuickScene2D.pc
+
 
 %if 0%{?docs}
 %files doc
@@ -168,6 +197,14 @@ popd
 
 
 %changelog
+* Fri Oct 06 2017 Jan Grulich <jgrulich@redhat.com> - 5.9.2-1
+- Update to 5.9.2
+  Resolves: bz#1482774
+
+* Mon Aug 28 2017 Jan Grulich <jgrulich@redhat.com> - 5.9.1-1
+- Update to 5.9.1
+  Resolves: bz#1482774
+
 * Wed Jan 11 2017 Jan Grulich <jgrulich@redhat.com> - 5.6.2-1
 - Update to 5.6.2
   Resolves: bz#1384836

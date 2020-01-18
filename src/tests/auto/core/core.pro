@@ -2,24 +2,23 @@ TEMPLATE = subdirs
 
 SUBDIRS = \
     handle \
-    handlemanager \
-    arrayresourcesmanager \
+    qresourcemanager \
     qcircularbuffer \
     qboundedcircularbuffer \
     nodes \
-    qentity \
     qaspectengine \
     qaspectfactory \
     qaspectjob \
     qchangearbiter \
     qscene \
-    qservicelocator \
-    qray3d \
-    qtransform
+    qservicelocator
 
-contains(QT_CONFIG, private_tests) {
+qtConfig(private_tests) {
     SUBDIRS += \
+    qentity \
     qframeallocator \
-    cloning \
-    threadpooler
+    qtransform \
+    threadpooler \
+    aspectcommanddebugger \
+    qpostman
 }

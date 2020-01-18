@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,21 +51,23 @@
 // We mean it.
 //
 
+#include <Qt3DCore/qt3dcore_global.h>
+#include <QtCore/QtGlobal>
 #include <QtCore/qlist.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qvector.h>
 
 #include <algorithm>
-#ifdef Q_COMPILER_INITIALIZER_LISTS
-# include <initializer_list>
-#endif
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <new>
-#include <QtGlobal>
-#include <Qt3DCore/qt3dcore_global.h>
+
+
+#ifdef Q_COMPILER_INITIALIZER_LISTS
+# include <initializer_list>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -72,7 +77,7 @@ class CircularBufferData : public QSharedData
 {
 protected:
     CircularBufferData()
-        : data(Q_NULLPTR),
+        : data(nullptr),
           capacity(0),
           size(0),
           first(-1),
@@ -207,7 +212,7 @@ public:
         typedef T *pointer;
         typedef T &reference;
 
-        Q_DECL_CONSTEXPR iterator() : buffer(Q_NULLPTR), index(-1) {}
+        Q_DECL_CONSTEXPR iterator() : buffer(nullptr), index(-1) {}
         iterator(QCircularBuffer<T> *buf, int idx)
             : buffer(buf), index(idx)
         {}
@@ -292,7 +297,7 @@ public:
         typedef const T *pointer;
         typedef const T &reference;
 
-        Q_DECL_CONSTEXPR const_iterator() : buffer(Q_NULLPTR), index(-1) {}
+        Q_DECL_CONSTEXPR const_iterator() : buffer(nullptr), index(-1) {}
         const_iterator(const QCircularBuffer<T> *buff, int idx)
             : buffer(buff), index(idx)
         {}
@@ -460,7 +465,7 @@ public:
     {
         d.detach();
         if (d->size == 0)
-            return array_range(Q_NULLPTR, 0);
+            return array_range(nullptr, 0);
         if (!isLinearised())
             linearise();
         return array_range(d->data() + d->first, d->last - d->first + 1);
@@ -469,7 +474,7 @@ public:
     const_array_range constData() const
     {
         if (!isLinearised() || d->size == 0)
-            return const_array_range(Q_NULLPTR, 0);
+            return const_array_range(nullptr, 0);
         return const_array_range(d->data() + d->first, d->last - d->first + 1);
     }
 
@@ -477,7 +482,7 @@ public:
     {
         d.detach();
         if (d->size == 0)
-            return array_range(Q_NULLPTR, 0);
+            return array_range(nullptr, 0);
         if (isLinearised())
             return array_range(d->data() + d->first, d->last - d->first + 1);
         else
@@ -487,7 +492,7 @@ public:
     const_array_range constDataOne() const
     {
         if (d->size == 0)
-            return const_array_range(Q_NULLPTR, 0);
+            return const_array_range(nullptr, 0);
         if (isLinearised())
             return const_array_range(d->data() + d->first, d->last - d->first + 1);
         else
@@ -498,14 +503,14 @@ public:
     {
         d.detach();
         if (d->size == 0 || isLinearised())
-            return array_range(Q_NULLPTR, 0);
+            return array_range(nullptr, 0);
         return array_range(d->data(), d->last + 1);
     }
     const_array_range dataTwo() const { return constDataTwo(); }
     const_array_range constDataTwo() const
     {
         if (d->size == 0 || isLinearised())
-            return const_array_range(Q_NULLPTR, 0);
+            return const_array_range(nullptr, 0);
         return const_array_range(d->data(), d->last + 1);
     }
 

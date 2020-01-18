@@ -1,41 +1,57 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:BSD$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** BSD License Usage
+** Alternatively, you may use this file under the terms of the BSD license
+** as follows:
 **
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** "Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions are
+** met:
+**   * Redistributions of source code must retain the above copyright
+**     notice, this list of conditions and the following disclaimer.
+**   * Redistributions in binary form must reproduce the above copyright
+**     notice, this list of conditions and the following disclaimer in
+**     the documentation and/or other materials provided with the
+**     distribution.
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
+**     from this software without specific prior written permission.
+**
+**
+** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 import QtQuick 2.0
+import QtQuick.Window 2.2
 import QtQuick.Scene3D 2.0
+import "planets.js" as Planets
 
 Item {
     id: mainview
@@ -47,13 +63,46 @@ Item {
     property int frames: 0
     property int sliderLength: (width < height) ? width / 2 : height / 2
     property real textSize: sliderLength / 20
-    property real planetButtonSize: (height < 2200) ? (height / 11) : 200
+    property real planetButtonSize: (height < 2200) ? (height / 13) : 200
+
+    Connections {
+        target: networkController
+
+        onCommandAccepted: {
+            var focusedItem = mainview.Window.window.activeFocusItem
+            if (focusedItem && focusedItem.panningEnabled) {
+                focusedItem.panningEnabled = false
+            }
+
+            switch (command) {
+            case "selectPlanet":
+                mainview.focusedPlanet = Planets.planetId(decodeURIComponent(value))
+                planetButtonView.forceActiveFocus()
+                planetButtonView.currentIndex = Planets.planetIndex(value)
+                break
+            case "setRotationSpeed":
+                rotationSpeedSlider.forceActiveFocus()
+                rotationSpeedSlider.value = rotationSpeedSlider.minimumValue +
+                        ((rotationSpeedSlider.maximumValue - rotationSpeedSlider.minimumValue) * value)
+                break
+            case "setViewingDistance":
+                viewingDistanceSlider.forceActiveFocus()
+                viewingDistanceSlider.value = viewingDistanceSlider.minimumValue +
+                        ((viewingDistanceSlider.maximumValue - viewingDistanceSlider.minimumValue) * value)
+                break
+            case "setPlanetSize":
+                planetSizeSlider.forceActiveFocus()
+                planetSizeSlider.value = planetSizeSlider.minimumValue +
+                        ((planetSizeSlider.maximumValue - planetSizeSlider.minimumValue) * value)
+                break
+            }
+        }
+    }
 
     //! [0]
     Scene3D {
         anchors.fill: parent
-        aspects: ["render", "logic"]
-        focus: true
+        aspects: ["render", "logic", "input"]
 
         SolarSystem { id: solarsystem }
     }
@@ -73,7 +122,7 @@ Item {
             updatePlanetInfo()
         } else {
             updatePlanetInfo()
-            info.opacity = 0.5
+            info.opacity = 1
         }
 
         solarsystem.changePlanetFocus(oldPlanet, focusedPlanet)
@@ -181,17 +230,58 @@ Item {
             planetSelector: mainview
             buttonSize: planetButtonSize
             fontSize: textSize
+
+            scale: activeFocus ? 1.4 : 1.0
+
+            Behavior on scale {
+                PropertyAnimation {
+                    duration: 200
+                }
+            }
+
+            signal swipeUp()
+            signal swipeDown()
+            signal swipeLeft()
+
+            onSwipeUp: {
+                if (planetButtonView.currentIndex > 0) {
+                    planetButtonView.currentIndex--
+                } else {
+                    rotationSpeedSlider.forceActiveFocus()
+                }
+            }
+
+            onSwipeDown: {
+                if (planetButtonView.currentIndex < planetButtonView.count - 1) {
+                    planetButtonView.currentIndex++
+                } else {
+                    planetSizeSlider.forceActiveFocus()
+                }
+            }
+
+            onSwipeLeft: {
+                if (index <= planetButtonView.count / 2) {
+                    rotationSpeedSlider.forceActiveFocus()
+                } else {
+                    planetSizeSlider.forceActiveFocus()
+                }
+            }
+
+            Keys.onPressed: {
+                if (event.key === Qt.Key_Select) {
+                    planetSelector.focusedPlanet = focusPlanet
+                }
+            }
         }
     }
 
     ListView {
         id: planetButtonView
-        anchors.top: parent.top
+        anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.rightMargin: planetButtonSize / 5
-        anchors.bottomMargin: planetButtonSize / 7
-        spacing: planetButtonSize / 7
+        anchors.rightMargin: planetButtonSize / 2
+        height: childrenRect.height
+        spacing: planetButtonSize / 6
         width: planetButtonSize * 1.4
         interactive: false
         model: planetModel
@@ -202,8 +292,8 @@ Item {
         id: info
         width: 400
         anchors.right: planetButtonView.left
-        anchors.rightMargin: 10
-        opacity: 0.5
+        anchors.rightMargin: 40
+        opacity: 1
 
         // Set initial information for Solar System
         planet: "Solar System"
@@ -229,84 +319,232 @@ Item {
         }
     }
 
-    StyledSlider {
-        id: speedSlider
+    Row {
         anchors.top: parent.top
         anchors.topMargin: 10
         anchors.horizontalCenter: parent.horizontalCenter
-        width: sliderLength
-        value: 0.2
-        minimumValue: 0
-        maximumValue: 1
-        onValueChanged: solarsystem.changeSpeed(value)
-    }
-    Text {
-        anchors.right: speedSlider.left
-        anchors.verticalCenter: speedSlider.verticalCenter
-        anchors.rightMargin: 10
-        font.family: "Helvetica"
-        font.pixelSize: textSize
-        font.weight: Font.Light
-        color: "white"
-        text: "Rotation Speed"
+
+        spacing: 10
+        scale: rotationSpeedSlider.activeFocus ? 1.4 : 1.0
+        opacity: rotationSpeedSlider.activeFocus ? 1.0 : 0.5
+
+        Behavior on scale {
+            PropertyAnimation {
+                duration: 200
+            }
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+
+            font.family: "Helvetica"
+            font.pixelSize: textSize
+            font.weight: Font.Light
+            color: rotationSpeedSlider.panningEnabled ? "#80c342" : "#ffffff"
+            text: "Rotation Speed"
+        }
+
+        StyledSlider {
+            id: rotationSpeedSlider
+            anchors.verticalCenter: parent.verticalCenter
+            width: sliderLength
+            value: 0.2
+            minimumValue: 0
+            maximumValue: 1
+            onValueChanged: solarsystem.changeSpeed(value)
+
+            focus: Qt.platform.os === "tvos" ? true : false
+
+            property bool panningEnabled: false
+            signal swipeDown()
+            signal swipeLeft()
+            signal swipeRight()
+            signal pannedHorizontally(real p)
+            signal pannedVertically(real p)
+
+            onSwipeDown: {
+                planetSizeSlider.forceActiveFocus()
+            }
+
+            onSwipeLeft: {
+                viewingDistanceSlider.forceActiveFocus()
+            }
+
+            onSwipeRight: {
+                planetButtonView.currentIndex = 0
+                planetButtonView.forceActiveFocus()
+            }
+
+            onPannedHorizontally: {
+                var step = (maximumValue - minimumValue) / 30
+
+                if (p > 0) {
+                    value += step
+                } else {
+                    value -= step
+                }
+            }
+
+            Keys.onPressed: {
+                if (event.key === Qt.Key_Select) {
+                    panningEnabled = !panningEnabled
+                }
+            }
+        }
     }
 
-    StyledSlider {
-        id: scaleSlider
+    Column {
+        anchors.left: parent.left
+        anchors.leftMargin: 30
+        anchors.verticalCenter: parent.verticalCenter
+
+        spacing: 10
+        scale: viewingDistanceSlider.activeFocus ? 1.4 : 1.0
+        opacity: viewingDistanceSlider.activeFocus ? 1.0 : 0.5
+
+        Behavior on scale {
+            PropertyAnimation {
+                duration: 200
+            }
+        }
+
+        StyledSlider {
+            id: viewingDistanceSlider
+
+            anchors.horizontalCenter: parent.horizontalCenter
+            orientation: Qt.Vertical
+            height: sliderLength
+            value: 1
+            minimumValue: 1
+            maximumValue: 2
+            //! [2]
+            onValueChanged: solarsystem.changeCameraDistance(value)
+            //! [2]
+
+            property bool panningEnabled: false
+            signal swipeUp()
+            signal swipeDown()
+            signal swipeRight()
+            signal pannedHorizontally(real p)
+            signal pannedVertically(real p)
+
+            onSwipeUp: {
+                rotationSpeedSlider.forceActiveFocus()
+            }
+
+            onSwipeDown: {
+                planetSizeSlider.forceActiveFocus()
+            }
+
+            onSwipeRight: {
+                planetButtonView.currentIndex = 0
+                planetButtonView.forceActiveFocus()
+            }
+
+            onPannedVertically: {
+                var step = (maximumValue - minimumValue) / 30
+
+                if (p > 0) {
+                    value += step
+                } else {
+                    value -= step
+                }
+            }
+
+            Keys.onPressed: {
+                if (event.key === Qt.Key_Select) {
+                    panningEnabled = !panningEnabled
+                }
+            }
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            font.family: "Helvetica"
+            font.pixelSize: textSize
+            font.weight: Font.Light
+            color: viewingDistanceSlider.panningEnabled ? "#80c342" : "#ffffff"
+            text: "Viewing\nDistance"
+        }
+    }
+
+    Row {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 10
         anchors.horizontalCenter: parent.horizontalCenter
-        width: sliderLength
-        value: 1200
-        minimumValue: 1
-        maximumValue: 2000
-        onValueChanged: solarsystem.changeScale(value, false)
-    }
-    Text {
-        anchors.right: scaleSlider.left
-        anchors.verticalCenter: scaleSlider.verticalCenter
-        anchors.rightMargin: 10
-        font.family: "Helvetica"
-        font.pixelSize: textSize
-        font.weight: Font.Light
-        color: "white"
-        text: "Planet Size"
-    }
 
-    StyledSlider {
-        id: distanceSlider
-        anchors.left: parent.left
-        anchors.leftMargin: 10
-        anchors.verticalCenter: parent.verticalCenter
-        orientation: Qt.Vertical
-        height: sliderLength
-        value: 1
-        minimumValue: 1
-        maximumValue: 2
-        //! [2]
-        onValueChanged: solarsystem.changeCameraDistance(value)
-        //! [2]
-    }
-    Text {
-        y: distanceSlider.y + distanceSlider.height + width + 10
-        x: distanceSlider.x + 30 - textSize
-        transform: Rotation {
-            origin.x: 0
-            origin.y: 0
-            angle: -90
+        spacing: 10
+        scale: planetSizeSlider.activeFocus ? 1.4 : 1.0
+        opacity: planetSizeSlider.activeFocus ? 1.0 : 0.5
+
+        Behavior on scale {
+            PropertyAnimation {
+                duration: 200
+            }
         }
-        font.family: "Helvetica"
-        font.pixelSize: textSize
-        font.weight: Font.Light
-        color: "white"
-        text: "Viewing Distance"
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            font.family: "Helvetica"
+            font.pixelSize: textSize
+            font.weight: Font.Light
+            color: planetSizeSlider.panningEnabled ? "#80c342" : "#ffffff"
+            text: "Planet Size"
+        }
+
+        StyledSlider {
+            id: planetSizeSlider
+            anchors.verticalCenter: parent.verticalCenter
+            width: sliderLength
+            value: 1200
+            minimumValue: 1
+            maximumValue: 2000
+            onValueChanged: solarsystem.changeScale(value, false)
+
+            property bool panningEnabled: false
+            signal swipeUp()
+            signal swipeLeft()
+            signal swipeRight()
+            signal pannedHorizontally(real p)
+            signal pannedVertically(real p)
+
+            onSwipeUp: {
+                rotationSpeedSlider.forceActiveFocus()
+            }
+
+            onSwipeLeft: {
+                viewingDistanceSlider.forceActiveFocus()
+            }
+
+            onSwipeRight: {
+                planetButtonView.currentIndex = planetButtonView.count - 1
+                planetButtonView.forceActiveFocus()
+            }
+
+            onPannedHorizontally: {
+                var step = (maximumValue - minimumValue) / 30
+
+                if (p > 0) {
+                    value += step
+                } else {
+                    value -= step
+                }
+            }
+
+            Keys.onPressed: {
+                if (event.key === Qt.Key_Select) {
+                    panningEnabled = !panningEnabled
+                }
+            }
+        }
     }
 
     // FPS display, initially hidden, clicking will show it
     FpsDisplay {
         id: fpsDisplay
         anchors.left: parent.left
-        anchors.top: parent.top
+        anchors.bottom: parent.bottom
         width: 32
         height: 64
         hidden: true
@@ -321,5 +559,11 @@ Item {
             frames = 0
         }
         onRunningChanged: frames = 0
+    }
+
+    Loader {
+        anchors.fill: parent
+
+        source: Qt.platform.os === "tvos" ? "AppleTVInput.qml" : ""
     }
 }

@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -36,7 +39,7 @@
 
 #include "sphere_p.h"
 
-#include <Qt3DCore/qray3d.h>
+#include <Qt3DRender/private/qray3d_p.h>
 
 #include <QPair>
 
@@ -50,7 +53,7 @@ namespace {
 
 // Intersects ray r = p + td, |d| = 1, with sphere s and, if intersecting,
 // returns true and intersection point q; false otherwise
-bool intersectRaySphere(const Qt3DCore::QRay3D &ray, const Qt3DRender::Render::Sphere &s, QVector3D *q = Q_NULLPTR)
+bool intersectRaySphere(const Qt3DRender::RayCasting::QRay3D &ray, const Qt3DRender::Render::Sphere &s, QVector3D *q = nullptr)
 {
     const QVector3D p = ray.origin();
     const QVector3D d = ray.direction();
@@ -58,7 +61,7 @@ bool intersectRaySphere(const Qt3DCore::QRay3D &ray, const Qt3DRender::Render::S
     const float c = QVector3D::dotProduct(m, m) - s.radius() * s.radius();
 
     // If there is definitely at least one real root, there must be an intersection
-    if (q == Q_NULLPTR && c <= 0.0f)
+    if (q == nullptr && c <= 0.0f)
         return true;
 
     const float b = QVector3D::dotProduct(m, d);
@@ -72,7 +75,7 @@ bool intersectRaySphere(const Qt3DCore::QRay3D &ray, const Qt3DRender::Render::S
         return false;
 
     // If we don't need the intersection point, return early
-    if (q == Q_NULLPTR)
+    if (q == nullptr)
         return true;
 
     // Ray now found to intersect sphere, compute smallest t value of intersection
@@ -160,7 +163,8 @@ Sphere Sphere::fromPoints(const QVector<QVector3D> &points)
 
 void Sphere::initializeFromPoints(const QVector<QVector3D> &points)
 {
-    constructRitterSphere(*this, points);
+    if (!points.isEmpty())
+        constructRitterSphere(*this, points);
 }
 
 void Sphere::expandToContain(const QVector3D &p)
@@ -219,14 +223,15 @@ Qt3DCore::QNodeId Sphere::id() const
     return m_id;
 }
 
-bool Sphere::intersects(const Qt3DCore::QRay3D &ray, QVector3D *q) const
+bool Sphere::intersects(const RayCasting::QRay3D &ray, QVector3D *q, QVector3D *uvw) const
 {
+    Q_UNUSED(uvw);
     return intersectRaySphere(ray, *this, q);
 }
 
-QBoundingVolume::Type Sphere::type() const
+Sphere::Type Sphere::type() const
 {
-    return QBoundingVolume::Sphere;
+    return RayCasting::QBoundingVolume::Sphere;
 }
 
 } // Render

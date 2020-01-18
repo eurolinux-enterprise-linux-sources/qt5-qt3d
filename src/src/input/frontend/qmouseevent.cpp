@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -58,11 +61,53 @@ namespace Qt3DInput {
  * traversing the view, originating from the mouse position intersects with one
  * or more elements of the scene.
  *
- * \sa KeyEvent, WheelEvent, MouseInput
+ * \sa KeyEvent, WheelEvent, MouseHandler
+ */
+
+/*!
+ * \qmlproperty int Qt3D.Input::MouseEvent::x
+ * Specifies The X coordinate of the mouse event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty int Qt3D.Input::MouseEvent::y
+ * Specifies The Y coordinate of the mouse event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty bool Qt3D.Input::MouseEvent::wasHeld
+ * Specifies if a mouse button was held down during the mouse event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty Buttons Qt3D.Input::MouseEvent::button
+ * Specifies the button triggering the mouse event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty int Qt3D.Input::MouseEvent::buttons
+ * Specifies the button triggering the mouse event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty Modifiers Qt3D.Input::MouseEvent::modifiers
+ * Specifies if any modifiers were applied to the mouse event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty bool Qt3D.Input::MouseEvent::accepted
+ * Specifies if the mouse event has been accepted
  */
 
 /*!
  * \class Qt3DInput::QMouseEvent
+ * \inheaderfile Qt3DInput/QMouseEvent
  * \inmodule Qt3DInput
  *
  * \brief The Qt3DCore::QMouseEvent contains parameters that describe a mouse event.
@@ -73,8 +118,77 @@ namespace Qt3DInput {
  *
  * \since 5.5
  *
- * \sa QKeyEvent, QWheelEvent, QMouseInput
+ * \sa QKeyEvent, QWheelEvent, QMouseHandler
  *
+ */
+
+/*!
+ * \property QMouseEvent::x
+ * Specifies The X coordinate of the mouse event
+ * \readonly
+ */
+
+/*!
+ * \property QMouseEvent::y
+ * Specifies The y coordinate of the mouse event
+ * \readonly
+ */
+
+/*!
+ * \property QMouseEvent::wasHeld
+ * Specifies if a mouse button was held down during the mouse event
+ * \readonly
+ */
+
+/*!
+ * \property QMouseEvent::button
+ * Specifies the button triggering the mouse event
+ * \readonly
+ */
+
+/*!
+ * \property QMouseEvent::buttons
+ * Specifies the button triggering the mouse event
+ * \readonly
+ */
+
+/*!
+ * \property QMouseEvent::modifiers
+ * Specifies if any modifiers were applied to the mouse event
+ * \readonly
+ */
+
+/*!
+ * \property QMouseEvent::accepted
+ * Specifies if the mouse event has been accepted
+ */
+
+/*!
+ * \enum Qt3DInput::QMouseEvent::Buttons
+ *
+ * \value LeftButton
+ * \value RightButton
+ * \value MiddleButton
+ * \value BackButton
+ * \value NoButton
+ */
+
+/*!
+ * \enum Qt3DInput::QMouseEvent::Modifiers
+ *
+ * \value NoModifier
+ * \value ShiftModifier
+ * \value ControlModifier
+ * \value AltModifier
+ * \value MetaModifier
+ * \value KeypadModifier
+ */
+
+/*!
+ * \typedef Qt3DInput::QMouseEventPtr
+ * \relates Qt3DInput::QMouseEvent
+ *
+ * A shared pointer for QMouseEvent.
  */
 
 /*!
@@ -152,9 +266,9 @@ int QMouseEvent::buttons() const
 }
 
 /*!
- * Returns the keyboard modifier that may be accompanying the mouse event.
+ * Returns the keyboard modifiers that may be accompanying the mouse event.
  */
-QMouseEvent::Modifiers QMouseEvent::modifier() const
+QMouseEvent::Modifiers QMouseEvent::modifiers() const
 {
     switch (m_event.modifiers()) {
     case Qt::ShiftModifier:
@@ -181,12 +295,48 @@ QMouseEvent::Modifiers QMouseEvent::modifier() const
  *
  * Mouse wheel events occur when the mouse wheel is rotated.
  *
- * \sa KeyEvent, MouseEvent, MouseInput
+ * \sa KeyEvent, MouseEvent, MouseHandler
  *
  */
 
 /*!
+ * \qmlproperty int Qt3D.Input::WheelEvent::x
+ * Specifies The X coordinate of the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty int Qt3D.Input::WheelEvent::y
+ * Specifies The Y coordinate of the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty Point Qt3D.Input::WheelEvent::angleDelta
+ * Specifies The change wheel angle of the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty int Qt3D.Input::WheelEvent::buttons
+ * Specifies the button if present in the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty Modifiers Qt3D.Input::WheelEvent::modifiers
+ * Specifies if any modifiers were applied to the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \qmlproperty bool Qt3D.Input::WheelEvent::accepted
+ * Specifies if the mouse wheel event has been accepted
+ */
+
+/*!
  * \class Qt3DInput::QWheelEvent
+ * \inheaderfile Qt3DInput/QWheelEvent
  * \inmodule Qt3DInput
  *
  * \brief The QWheelEvent class contains parameters that describe a mouse wheel event.
@@ -195,8 +345,72 @@ QMouseEvent::Modifiers QMouseEvent::modifier() const
  *
  * \since 5.5
  *
- * \sa QKeyEvent, QMouseEvent, QMouseInput
+ * \sa QKeyEvent, QMouseEvent, QMouseHandler
  *
+ */
+
+/*!
+ * \property QWheelEvent::x
+ * Specifies The X coordinate of the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \property QWheelEvent::y
+ * Specifies The Y coordinate of the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \property QWheelEvent::angleDelta
+ * Specifies The change wheel angle of the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \property QWheelEvent::buttons
+ * Specifies the button if present in the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \property  QWheelEvent::modifiers
+ * Specifies if any modifiers were applied to the mouse wheel event
+ * \readonly
+ */
+
+/*!
+ * \property QWheelEvent::accepted
+ * Specifies if the mouse wheel event has been accepted
+ */
+
+/*!
+ * \enum Qt3DInput::QWheelEvent::Buttons
+ *
+ * \value LeftButton
+ * \value RightButton
+ * \value MiddleButton
+ * \value BackButton
+ * \value NoButton
+ */
+
+/*!
+ * \enum Qt3DInput::QWheelEvent::Modifiers
+ *
+ * \value NoModifier
+ * \value ShiftModifier
+ * \value ControlModifier
+ * \value AltModifier
+ * \value MetaModifier
+ * \value KeypadModifier
+ */
+
+
+/*!
+ * \typedef Qt3DInput::QWheelEventPtr
+ * \relates Qt3DInput::QWheelEvent
+ *
+ * A shared pointer for QWheelEvent.
  */
 
 /*!
@@ -241,6 +455,7 @@ QMouseEvent::Modifiers QMouseEvent::modifier() const
  *  Returns the QEvent::Type of the event.
  */
 
+#if QT_CONFIG(wheelevent)
 /*!
  * Constructs a new QWheelEvent instance from the QWheelEvent \a e.
  */
@@ -264,9 +479,9 @@ int QWheelEvent::buttons() const
 }
 
 /*!
- * Returns the keyboard modifier that may be accompanying the wheel event.
+ * Returns the keyboard modifiers that may be accompanying the wheel event.
  */
-QWheelEvent::Modifiers QWheelEvent::modifier() const
+QWheelEvent::Modifiers QWheelEvent::modifiers() const
 {
     switch (m_event.modifiers()) {
     case Qt::ShiftModifier:
@@ -283,6 +498,7 @@ QWheelEvent::Modifiers QWheelEvent::modifier() const
         return QWheelEvent::NoModifier;
     }
 }
+#endif // QT_CONFIG(wheelevent)
 
 } // namespace Qt3DInput
 

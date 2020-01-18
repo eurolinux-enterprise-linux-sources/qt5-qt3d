@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -50,15 +53,13 @@
 
 #include <Qt3DCore/qt3dcore_global.h>
 #include <QtCore/QDebug>
+#include <limits.h>
 
 class tst_Handle;  // needed for friend class declaration below
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DCore {
-
-template <typename T, uint INDEXBITS>
-class QHandleManager;
 
 template <typename T, uint INDEXBITS = 16>
 class QHandle
@@ -79,18 +80,6 @@ public:
     static quint32 maxIndex() { return MaxIndex; }
     static quint32 maxCounter() { return MaxCounter; }
 
-
-private:
-    enum {
-        // Sizes to use for bit fields
-        IndexBits = INDEXBITS,
-        CounterBits = 32 - INDEXBITS - 2, // We use 2 bits for book-keeping in QHandleManager
-
-        // Sizes to compare against for asserting dereferences
-        MaxIndex = (1 << IndexBits) - 1,
-        MaxCounter = (1 << CounterBits) - 1
-    };
-
     QHandle(quint32 i, quint32 count)
     {
         d.m_index = i;
@@ -100,10 +89,17 @@ private:
         Q_ASSERT(count < MaxCounter);
     }
 
+    enum {
+        // Sizes to use for bit fields
+        IndexBits = INDEXBITS,
+        CounterBits = 32 - INDEXBITS - 2, // We use 2 bits for book-keeping in QHandleManager
 
-    friend class QHandleManager<T, INDEXBITS>;
-    friend class ::tst_Handle;
+        // Sizes to compare against for asserting dereferences
+        MaxIndex = (1 << IndexBits) - 1,
+        MaxCounter = ((1 << CounterBits) - 1 > SHRT_MAX) ? SHRT_MAX - 1 : (1 << CounterBits) - 1
+    };
 
+private:
     struct Data {
         quint32 m_index : IndexBits;
         quint32 m_counter : CounterBits;
@@ -127,7 +123,11 @@ QDebug operator<<(QDebug dbg, const QHandle<T, INDEXBITS> &h)
     return dbg;
 }
 
-} // Qt3D
+} // Qt3DCore
+
+template <typename T, uint I>
+class QTypeInfo<Qt3DCore::QHandle<T,I> > // simpler than fighting the Q_DECLARE_TYPEINFO macro
+    : public QTypeInfoMerger<Qt3DCore::QHandle<T,I>, quint32> {};
 
 QT_END_NAMESPACE
 

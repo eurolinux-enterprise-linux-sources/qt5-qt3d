@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -107,7 +110,7 @@ int QFrameAllocator::allocatorPoolSize() const
 bool QFrameAllocator::isEmpty() const
 {
     Q_D(const QFrameAllocator);
-    Q_FOREACH (const QFixedFrameAllocator &allocator, d->m_allocatorPool) {
+    for (const QFixedFrameAllocator &allocator : d->m_allocatorPool) {
         if (!allocator.isEmpty())
             return false;
     }
@@ -118,7 +121,7 @@ uint QFrameAllocator::totalChunkCount() const
 {
     Q_D(const QFrameAllocator);
     uint chunkCount = 0;
-    foreach (const QFixedFrameAllocator& allocator, d->m_allocatorPool)
+    for (const QFixedFrameAllocator& allocator : d->m_allocatorPool)
         chunkCount += allocator.chunkCount();
     return chunkCount;
 }
@@ -126,8 +129,8 @@ uint QFrameAllocator::totalChunkCount() const
 QFixedFrameAllocator::QFixedFrameAllocator()
     : m_blockSize(0)
     , m_nbrBlock(0)
-    , m_lastAllocatedChunck(Q_NULLPTR)
-    , m_lastFreedChunck(Q_NULLPTR)
+    , m_lastAllocatedChunck(nullptr)
+    , m_lastFreedChunck(nullptr)
 {
 }
 
@@ -144,32 +147,37 @@ void QFixedFrameAllocator::init(uint blockSize, uchar pageSize)
 
 void *QFixedFrameAllocator::allocate()
 {
-    Q_ASSERT(m_blockSize && m_nbrBlock);
-    if (m_lastAllocatedChunck == Q_NULLPTR ||
-            m_lastAllocatedChunck->m_blocksAvailable == 0) {
-        int i = 0;
-        for (; i < m_chunks.size(); i++) {
-            if (m_chunks[i].m_blocksAvailable > 0) {
-                m_lastAllocatedChunck = m_chunks.begin() + i;
-                break;
-            }
-        }
-        if (i == m_chunks.size()) {
-            m_chunks.resize(m_chunks.size() + 1);
-            QFrameChunk &newChunk = m_chunks.last();
-            newChunk.init(m_blockSize, m_nbrBlock);
-            m_lastAllocatedChunck = &newChunk;
-            m_lastFreedChunck = m_lastAllocatedChunck;
+    Q_ASSERT(m_blockSize);
+    return scan().allocate(m_blockSize);
+}
+
+QFrameChunk &QFixedFrameAllocator::scan()
+{
+    Q_ASSERT(m_blockSize);
+    Q_ASSERT(m_nbrBlock);
+
+    if (m_lastAllocatedChunck && m_lastAllocatedChunck->m_blocksAvailable)
+        return *m_lastAllocatedChunck;
+
+    for (int i = 0; i < m_chunks.size(); i++) {
+        if (m_chunks[i].m_blocksAvailable > 0) {
+            m_lastAllocatedChunck = m_chunks.begin() + i;
+            return *m_lastAllocatedChunck;
         }
     }
-    return m_lastAllocatedChunck->allocate(m_blockSize);
+    m_chunks.resize(m_chunks.size() + 1);
+    QFrameChunk &newChunk = m_chunks.last();
+    newChunk.init(m_blockSize, m_nbrBlock);
+    m_lastAllocatedChunck = &newChunk;
+    m_lastFreedChunck = &newChunk;
+    return newChunk;
 }
 
 void QFixedFrameAllocator::deallocate(void *ptr)
 {
     Q_ASSERT(m_blockSize && m_nbrBlock);
-    if (!m_chunks.empty() && ptr != Q_NULLPTR) {
-        if (m_lastFreedChunck != Q_NULLPTR && m_lastFreedChunck->contains(ptr, m_blockSize))
+    if (!m_chunks.empty() && ptr != nullptr) {
+        if (m_lastFreedChunck != nullptr && m_lastFreedChunck->contains(ptr, m_blockSize))
             m_lastFreedChunck->deallocate(ptr, m_blockSize);
         else {
             for (int i = 0; i < m_chunks.size(); i++) {
@@ -189,9 +197,9 @@ void QFixedFrameAllocator::trim()
         if (m_chunks.at(i).isEmpty()) {
             m_chunks[i].release();
             if (m_lastAllocatedChunck == &m_chunks[i])
-                m_lastAllocatedChunck = Q_NULLPTR;
+                m_lastAllocatedChunck = nullptr;
             if (m_lastFreedChunck == &m_chunks[i])
-                m_lastAllocatedChunck = Q_NULLPTR;
+                m_lastFreedChunck = nullptr;
             m_chunks.removeAt(i);
         }
     }
@@ -202,8 +210,8 @@ void QFixedFrameAllocator::release()
     for (int i = m_chunks.size() - 1; i >= 0; i--)
         m_chunks[i].release();
     m_chunks.clear();
-    m_lastAllocatedChunck = Q_NULLPTR;
-    m_lastFreedChunck = Q_NULLPTR;
+    m_lastAllocatedChunck = nullptr;
+    m_lastFreedChunck = nullptr;
 }
 
 // Allows to reuse chunks without having to reinitialize and reallocate them
@@ -215,7 +223,7 @@ void QFixedFrameAllocator::clear()
 
 bool QFixedFrameAllocator::isEmpty() const
 {
-    Q_FOREACH (const QFrameChunk &chunck, m_chunks) {
+    for (const QFrameChunk &chunck : m_chunks) {
         if (chunck.m_blocksAvailable != chunck.m_maxBlocksAvailable)
             return false;
     }
@@ -245,7 +253,7 @@ void QFrameChunk::init(uint blockSize, uchar blocks)
 void *QFrameChunk::allocate(uint blockSize)
 {
     if (m_blocksAvailable == 0)
-        return Q_NULLPTR;
+        return nullptr;
     uchar *r = m_data + (m_firstAvailableBlock * blockSize);
     m_firstAvailableBlock = *r;
     --m_blocksAvailable;

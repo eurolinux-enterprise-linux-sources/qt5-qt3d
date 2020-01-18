@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -59,7 +62,7 @@
 
     \list
         \li 2D and 3D rendering for C++ and Qt Quick applications
-        \li Meshes
+        \li Meshes and \l {Qt 3D Render Geometry}{Geometry}
         \li \l {Materials}
         \li \l {Shaders}
         \li \l {Shadow Mapping}{Shadow mapping}
@@ -69,6 +72,7 @@
         \li Multitexturing
         \li \l {Instanced Rendering}{Instanced rendering}
         \li \l {Uniform Buffer Objects}
+        \li \l {Pro Tips}
     \endlist
 
     \section2 Materials
@@ -94,7 +98,6 @@
     fragment shaders. Compute shaders are planned for a future release.
 
     For examples of using shaders, see the Simple Shaders QML Example,
-    \l {Qt 3D: Tessellation Modes QML Example},
     \l {Qt 3D: Shadow Map QML Example}, \l{Qt 3D: Wireframe QML Example}, and
     \l {Qt 3D: Wave QML Example}.
 
@@ -177,6 +180,11 @@
     A Uniform Buffer Object (UBO) can be bound to OpenGL shader programs to make
     large amounts of data readily available. Typical use cases for UBOs are for
     sets of material or lighting parameters.
+
+    \section2 Pro Tips
+
+    Because Murphy's law proves to often be true when it comes to 3D rendering,
+    \l {Qt 3D Render Pro Tips}{here} are a few points that might help you.
 
     \section1 Configurable Renderer
 

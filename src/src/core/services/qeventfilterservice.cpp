@@ -1,80 +1,91 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Paul Lemire (paul.lemire350@gmail.com)
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qeventfilterservice_p.h"
-#include "qabstractserviceprovider_p.h"
-#include <QMap>
-#include <QObject>
-#include <QVector>
+
+#include <QtCore/QMap>
+#include <QtCore/QObject>
+#include <QtCore/QVector>
+
+#include <Qt3DCore/private/qabstractserviceprovider_p.h>
 
 QT_BEGIN_NAMESPACE
+
+namespace {
+    struct FilterPriorityPair
+    {
+        QObject *filter;
+        int priority;
+    };
+
+    bool operator <(const FilterPriorityPair &a, const FilterPriorityPair &b)
+    {
+        return a.priority < b.priority;
+    }
+}
+
+Q_DECLARE_TYPEINFO(FilterPriorityPair, Q_PRIMITIVE_TYPE);
 
 namespace Qt3DCore {
 
 namespace {
 
-struct FilterPriorityPair
-{
-    QObject *filter;
-    int priority;
-};
-
-bool operator <(const FilterPriorityPair &a, const FilterPriorityPair &b)
-{
-    return a.priority < b.priority;
-}
-
 class InternalEventListener : public QObject
 {
     Q_OBJECT
 public:
-    explicit InternalEventListener(QObject *parent = Q_NULLPTR)
-        : QObject(parent)
-    {
-    }
+    explicit InternalEventListener(QEventFilterServicePrivate *filterService, QObject *parent = nullptr);
+    bool eventFilter(QObject *obj, QEvent *e) Q_DECL_FINAL;
+    QEventFilterServicePrivate* m_filterService;
+};
 
-    bool eventFilter(QObject *obj, QEvent *e) Q_DECL_FINAL
-    {
-        for (int i = m_eventFilters.size() - 1; i >= 0; --i) {
-            const FilterPriorityPair &fPPair = m_eventFilters.at(i);
-            if (fPPair.filter->eventFilter(obj, e))
-                return true;
-        }
-        return false;
-    }
+} // anonymous
+
+
+class QEventFilterServicePrivate : public QAbstractServiceProviderPrivate
+{
+public:
+    QEventFilterServicePrivate()
+        : QAbstractServiceProviderPrivate(QServiceLocator::EventFilterService, QStringLiteral("Default event filter service implementation"))
+    {}
+
+    Q_DECLARE_PUBLIC(QEventFilterService)
 
     void registerEventFilter(QObject *eventFilter, int priority)
     {
@@ -102,22 +113,9 @@ public:
         }
     }
 
-private:
+    QScopedPointer<InternalEventListener> m_eventDispatcher;
     QVector<FilterPriorityPair> m_eventFilters;
 };
-
-} // anonymous
-
-class QEventFilterServicePrivate : public QAbstractServiceProviderPrivate
-{
-public:
-    QEventFilterServicePrivate()
-        : QAbstractServiceProviderPrivate(QServiceLocator::EventFilterService, QStringLiteral("Default event filter service implementation"))
-    {}
-
-    QScopedPointer<InternalEventListener> m_eventDispatcher;
-};
-
 
 /* !\internal
     \class Qt3DCore::QEventFilterService
@@ -144,24 +142,50 @@ QEventFilterService::~QEventFilterService()
 void QEventFilterService::initialize(QObject *eventSource)
 {
     Q_D(QEventFilterService);
-    d->m_eventDispatcher.reset(new InternalEventListener());
-    eventSource->installEventFilter(d->m_eventDispatcher.data());
+    if (eventSource == nullptr) {
+        d->m_eventDispatcher.reset();
+    } else {
+        d->m_eventDispatcher.reset(new InternalEventListener(d));
+        eventSource->installEventFilter(d->m_eventDispatcher.data());
+    }
+}
+
+void QEventFilterService::shutdown(QObject *eventSource)
+{
+    Q_D(QEventFilterService);
+    if (eventSource && d->m_eventDispatcher.data())
+        eventSource->removeEventFilter(d->m_eventDispatcher.data());
 }
 
 void QEventFilterService::registerEventFilter(QObject *eventFilter, int priority)
 {
     Q_D(QEventFilterService);
-    if (!d->m_eventDispatcher)
-        return;
-    d->m_eventDispatcher->registerEventFilter(eventFilter, priority);
+    d->registerEventFilter(eventFilter, priority);
 }
 
 void QEventFilterService::unregisterEventFilter(QObject *eventFilter)
 {
     Q_D(QEventFilterService);
-    if (!d->m_eventDispatcher)
-        return;
-    d->m_eventDispatcher->unregisterEventFilter(eventFilter);
+    d->unregisterEventFilter(eventFilter);
+}
+
+namespace{
+
+InternalEventListener::InternalEventListener(QEventFilterServicePrivate *filterService, QObject *parent)
+    : QObject(parent),
+      m_filterService(filterService)
+{
+}
+
+bool InternalEventListener::eventFilter(QObject *obj, QEvent *e)
+{
+    for (int i = m_filterService->m_eventFilters.size() - 1; i >= 0; --i) {
+        const FilterPriorityPair &fPPair = m_filterService->m_eventFilters.at(i);
+        if (fPPair.filter->eventFilter(obj, e))
+            return true;
+    }
+    return false;
+}
 }
 
 } // Qt3DCore

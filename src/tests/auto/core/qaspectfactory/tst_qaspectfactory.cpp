@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -49,11 +41,9 @@ public: \
         : QAbstractAspect(parent) {} \
 \
 private: \
-    void onRootEntityChanged(QEntity *) Q_DECL_OVERRIDE {} \
-    void onInitialize(const QVariantMap &) Q_DECL_OVERRIDE {} \
-    void onStartup() Q_DECL_OVERRIDE {} \
-    void onShutdown() Q_DECL_OVERRIDE {} \
-    void onCleanup() Q_DECL_OVERRIDE {} \
+    void onRegistered() Q_DECL_OVERRIDE {} \
+    void onEngineStartup() Q_DECL_OVERRIDE {} \
+    void onEngineShutdown() Q_DECL_OVERRIDE {} \
 \
     QVector<QAspectJobPtr> jobsToExecute(qint64) Q_DECL_OVERRIDE \
     { \
@@ -77,14 +67,14 @@ private Q_SLOTS:
 
         // THEN
         QCOMPARE(factory.availableFactories().size(), 1);
-        QCOMPARE(factory.availableFactories().first(), QString("default"));
+        QCOMPARE(factory.availableFactories().first(), QLatin1String("default"));
 
         // WHEN
-        QAbstractAspect *aspect = factory.createAspect(QStringLiteral("default"));
+        QAbstractAspect *aspect = factory.createAspect(QLatin1String("default"));
 
         // THEN
-        QVERIFY(qobject_cast<DefaultFakeAspect*>(aspect) != Q_NULLPTR);
-        QVERIFY(aspect->parent() == Q_NULLPTR);
+        QVERIFY(qobject_cast<DefaultFakeAspect*>(aspect) != nullptr);
+        QVERIFY(aspect->parent() == nullptr);
     }
 
     void shouldKnowAspectNames()
@@ -97,8 +87,8 @@ private Q_SLOTS:
         AnotherFakeAspect missing;
 
         // THEN
-        QCOMPARE(factory.aspectName(&fake), QString("default"));
-        QCOMPARE(factory.aspectName(&missing), QString());
+        QCOMPARE(factory.aspectName(&fake), QLatin1String("default"));
+        QCOMPARE(factory.aspectName(&missing), QLatin1String());
     }
 
     void shouldGracefulyHandleMissingFactories()
@@ -107,10 +97,10 @@ private Q_SLOTS:
         QAspectFactory factory;
 
         // WHEN
-        QAbstractAspect *aspect = factory.createAspect(QStringLiteral("missing"), this);
+        QAbstractAspect *aspect = factory.createAspect(QLatin1String("missing"), this);
 
         // THEN
-        QVERIFY(qobject_cast<AnotherFakeAspect*>(aspect) == Q_NULLPTR);
+        QVERIFY(qobject_cast<AnotherFakeAspect*>(aspect) == nullptr);
     }
 };
 

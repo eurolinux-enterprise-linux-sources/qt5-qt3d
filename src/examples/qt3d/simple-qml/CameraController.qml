@@ -1,34 +1,48 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Paul Lemire <paul.lemire350@gmail.com>
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:BSD$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** BSD License Usage
+** Alternatively, you may use this file under the terms of the BSD license
+** as follows:
 **
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** "Redistribution and use in source and binary forms, with or without
+** modification, are permitted provided that the following conditions are
+** met:
+**   * Redistributions of source code must retain the above copyright
+**     notice, this list of conditions and the following disclaimer.
+**   * Redistributions in binary form must reproduce the above copyright
+**     notice, this list of conditions and the following disclaimer in
+**     the documentation and/or other materials provided with the
+**     distribution.
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
+**     from this software without specific prior written permission.
+**
+**
+** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 **
 ** $QT_END_LICENSE$
 **
@@ -61,11 +75,11 @@ Entity {
         property bool fineMotion: false
     }
 
-    KeyboardController {
+    KeyboardDevice {
         id: keyboardSourceDevice
     }
 
-    MouseController {
+    MouseDevice {
         id: mouseSourceDevice
         sensitivity: d.fineMotion ? 0.01 : 0.1
     }
@@ -79,7 +93,7 @@ Entity {
                 inputs: [
                     ActionInput {
                         sourceDevice: mouseSourceDevice
-                        keys: [MouseController.Left]
+                        buttons: [MouseEvent.LeftButton]
                     }
                 ]
             },
@@ -88,7 +102,7 @@ Entity {
                 inputs: [
                     ActionInput {
                         sourceDevice: mouseSourceDevice
-                        keys: [MouseController.Right]
+                        buttons: [MouseEvent.RightButton]
                     }
                 ]
             },
@@ -97,7 +111,7 @@ Entity {
                 inputs: [
                     ActionInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_Shift]
+                        buttons: [Qt.Key_Shift]
                     }
                 ]
             }
@@ -109,18 +123,18 @@ Entity {
             Axis {
                 name: "RX"
                 inputs: [
-                    AxisInput {
+                    AnalogAxisInput {
                         sourceDevice: mouseSourceDevice
-                        axis: MouseController.X
+                        axis: MouseDevice.X
                     }
                 ]
             },
             Axis {
                 name: "RY"
                 inputs: [
-                    AxisInput {
+                    AnalogAxisInput {
                         sourceDevice: mouseSourceDevice
-                        axis: MouseController.Y
+                        axis: MouseDevice.Y
                     }
                 ]
             },
@@ -128,14 +142,14 @@ Entity {
             Axis {
                 name: "TX"
                 inputs: [
-                    AxisInput {
+                    ButtonAxisInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_Left]
+                        buttons: [Qt.Key_Left]
                         scale: -1.0
                     },
-                    AxisInput {
+                    ButtonAxisInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_Right]
+                        buttons: [Qt.Key_Right]
                         scale: 1.0
                     }
                 ]
@@ -143,14 +157,14 @@ Entity {
             Axis {
                 name: "TZ"
                 inputs: [
-                    AxisInput {
+                    ButtonAxisInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_Up]
+                        buttons: [Qt.Key_Up]
                         scale: 1.0
                     },
-                    AxisInput {
+                    ButtonAxisInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_Down]
+                        buttons: [Qt.Key_Down]
                         scale: -1.0
                     }
                 ]
@@ -158,14 +172,14 @@ Entity {
             Axis {
                 name: "TY"
                 inputs: [
-                    AxisInput {
+                    ButtonAxisInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_PageUp]
+                        buttons: [Qt.Key_PageUp]
                         scale: 1.0
                     },
-                    AxisInput {
+                    ButtonAxisInput {
                         sourceDevice: keyboardSourceDevice
-                        keys: [Qt.Key_PageDown]
+                        buttons: [Qt.Key_PageDown]
                         scale: -1.0
                     }
                 ]
@@ -258,8 +272,8 @@ Entity {
             }
         },
 
-        LogicComponent {
-            onFrameUpdate: {
+        FrameAction {
+            onTriggered: {
                 // The time difference since the last frame is passed in as the
                 // argument dt. It is a floating point value in units of seconds.
                 root.camera.translate(Qt.vector3d(d.vx, d.vy, d.vz).times(dt))

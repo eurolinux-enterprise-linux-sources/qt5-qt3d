@@ -1,67 +1,63 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "qabstractphysicaldevicebackendnode.h"
 #include "qabstractphysicaldevicebackendnode_p.h"
-#include "qabstractphysicaldevice.h"
-#include "qaxissetting.h"
-#include "inputhandler_p.h"
-#include "inputmanagers_p.h"
+#include "qabstractphysicaldevicebackendnode_p_p.h"
 
+#include <Qt3DInput/qabstractphysicaldevice.h>
+#include <Qt3DInput/qaxissetting.h>
 #include <Qt3DInput/qinputaspect.h>
-#include <Qt3DInput/private/qinputaspect_p.h>
-
-#include <Qt3DCore/qscenepropertychange.h>
-#include <Qt3DCore/private/qabstractaspect_p.h>
+#include <Qt3DInput/qphysicaldevicecreatedchange.h>
+#include <Qt3DCore/qpropertynodeaddedchange.h>
+#include <Qt3DCore/qpropertynoderemovedchange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
 
 #include <cmath>
+
+#include <Qt3DInput/private/inputhandler_p.h>
+#include <Qt3DInput/private/inputmanagers_p.h>
+#include <Qt3DInput/private/qinputaspect_p.h>
+#include <Qt3DCore/private/qabstractaspect_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace {
-
-QVector<int> variantListToVector(const QVariantList &list)
-{
-    QVector<int> v(list.size());
-    int i = 0;
-    Q_FOREACH (const QVariant &e, list) {
-        v[i++] = e.toInt();
-    }
-    return v;
-}
 
 Q_DECL_CONSTEXPR int signum(float v)
 {
@@ -75,8 +71,7 @@ namespace Qt3DInput {
 QAbstractPhysicalDeviceBackendNodePrivate::QAbstractPhysicalDeviceBackendNodePrivate(Qt3DCore::QBackendNode::Mode mode)
     : Qt3DCore::QBackendNodePrivate(mode)
     , m_axisSettings()
-    , m_inputAspect(Q_NULLPTR)
-    , m_enabled(false)
+    , m_inputAspect(nullptr)
 {
 }
 
@@ -106,8 +101,10 @@ void QAbstractPhysicalDeviceBackendNodePrivate::removeAxisSetting(Qt3DCore::QNod
 {
     QVector<Input::AxisIdSetting>::iterator it;
     for (it = m_axisSettings.begin(); it != m_axisSettings.end(); ++it) {
-        if (it->m_axisSettingsId == axisSettingsId)
+        if (it->m_axisSettingsId == axisSettingsId) {
             m_axisSettings.erase(it);
+            break;
+        }
     }
 }
 
@@ -135,6 +132,35 @@ Input::AxisSetting *QAbstractPhysicalDeviceBackendNodePrivate::getAxisSetting(Qt
     return axisSetting;
 }
 
+QVector<Input::AxisIdSetting> QAbstractPhysicalDeviceBackendNodePrivate::convertToAxisIdSettingVector(Qt3DCore::QNodeId axisSettingId) const
+{
+    const auto axisSetting = getAxisSetting(axisSettingId);
+    const auto axisIds = axisSetting->axes();
+
+    auto result = QVector<Input::AxisIdSetting>();
+    result.reserve(axisIds.size());
+    std::transform(axisIds.constBegin(), axisIds.constEnd(),
+                   std::back_inserter(result),
+                   [axisSettingId] (int axisId) {
+                       return Input::AxisIdSetting{ axisId, axisSettingId };
+                   });
+    return result;
+}
+
+void QAbstractPhysicalDeviceBackendNodePrivate::updatePendingAxisSettings()
+{
+    if (m_pendingAxisSettingIds.isEmpty())
+        return;
+
+    m_axisSettings = std::accumulate(
+                m_pendingAxisSettingIds.constBegin(), m_pendingAxisSettingIds.constEnd(),
+                QVector<Input::AxisIdSetting>(),
+                [this] (const QVector<Input::AxisIdSetting> &current, Qt3DCore::QNodeId axisSettingId) {
+                    return current + convertToAxisIdSettingVector(axisSettingId);
+                });
+    m_pendingAxisSettingIds.clear();
+}
+
 QAbstractPhysicalDeviceBackendNode::QAbstractPhysicalDeviceBackendNode(QBackendNode::Mode mode)
     : Qt3DCore::QBackendNode(*new QAbstractPhysicalDeviceBackendNodePrivate(mode))
 {
@@ -145,47 +171,50 @@ QAbstractPhysicalDeviceBackendNode::QAbstractPhysicalDeviceBackendNode(QAbstract
 {
 }
 
-void QAbstractPhysicalDeviceBackendNode::updateFromPeer(Qt3DCore::QNode *peer)
+void QAbstractPhysicalDeviceBackendNode::initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change)
 {
+    const auto deviceChange = qSharedPointerCast<QPhysicalDeviceCreatedChangeBase>(change);
     Q_D(QAbstractPhysicalDeviceBackendNode);
-    QAbstractPhysicalDevice *physicalDevice = static_cast<QAbstractPhysicalDevice *>(peer);
-    d->m_enabled = physicalDevice->isEnabled();
-    Q_FOREACH (QAxisSetting *axisSetting, physicalDevice->axisSettings()) {
-        // Each axis setting can apply to more than one axis. If an axis is
-        // mentioned in more than one setting, we use the last one
-        Q_FOREACH (int axisId, variantListToVector(axisSetting->axes()))
-            d->addAxisSetting(axisId, axisSetting->id());
-    }
+    // Store the axis setting Ids. We will update the settings themselves when needed
+    d->m_pendingAxisSettingIds = deviceChange->axisSettingIds();
 }
 
 void QAbstractPhysicalDeviceBackendNode::cleanup()
 {
     Q_D(QAbstractPhysicalDeviceBackendNode);
-    d->m_enabled = false;
+    QBackendNode::setEnabled(false);
     d->m_axisSettings.clear();
     d->m_axisFilters.clear();
-    d->m_inputAspect = Q_NULLPTR;
+    d->m_inputAspect = nullptr;
 }
 
 void QAbstractPhysicalDeviceBackendNode::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e)
 {
     Q_D(QAbstractPhysicalDeviceBackendNode);
-    Qt3DCore::QScenePropertyChangePtr propertyChange = qSharedPointerCast<Qt3DCore::QScenePropertyChange>(e);
-    if (e->type() == Qt3DCore::NodeUpdated) {
-        if (propertyChange->propertyName() == QByteArrayLiteral("enabled")) {
-            d->m_enabled = propertyChange->value().toBool();
-        }
-    } else if (e->type() == Qt3DCore::NodeAdded) {
-        if (propertyChange->propertyName() == QByteArrayLiteral("axisSettings")) {
-            const Qt3DCore::QNodeId axisSettingId = propertyChange->value().value<Qt3DCore::QNodeId>();
+    switch (e->type()) {
+    case Qt3DCore::PropertyValueAdded: {
+        const auto change = qSharedPointerCast<Qt3DCore::QPropertyNodeAddedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("axisSettings")) {
+            const auto axisSettingId = change->addedNodeId();
             Input::AxisSetting *axisSetting = d->getAxisSetting(axisSettingId);
-            Q_FOREACH (int axisId, axisSetting->axes())
+            const auto axisIds = axisSetting->axes();
+            for (int axisId : axisIds)
                 d->addAxisSetting(axisId, axisSettingId);
         }
-    } else if (e->type() == Qt3DCore::NodeRemoved) {
-        if (propertyChange->propertyName() == QByteArrayLiteral("axisSettings"))
-            d->removeAxisSetting(propertyChange->value().value<Qt3DCore::QNodeId>());
+        break;
     }
+
+    case Qt3DCore::PropertyValueRemoved: {
+        const auto change = qSharedPointerCast<Qt3DCore::QPropertyNodeRemovedChange>(e);
+        if (change->propertyName() == QByteArrayLiteral("axisSettings"))
+            d->removeAxisSetting(change->removedNodeId());
+        break;
+    }
+
+    default:
+        break;
+    }
+    QBackendNode::sceneChangeEvent(e);
 }
 
 void QAbstractPhysicalDeviceBackendNode::setInputAspect(QInputAspect *aspect)
@@ -197,14 +226,15 @@ void QAbstractPhysicalDeviceBackendNode::setInputAspect(QInputAspect *aspect)
 QInputAspect *QAbstractPhysicalDeviceBackendNode::inputAspect() const
 {
     Q_D(const QAbstractPhysicalDeviceBackendNode);
-    Q_ASSERT_X(d->m_inputAspect, "QAbstractPhysicalDeviceBackendNode::inputAspect()" , "No input aspect set");
     return d->m_inputAspect;
 }
 
 float QAbstractPhysicalDeviceBackendNode::processedAxisValue(int axisIdentifier)
 {
-    // Find axis settings for this axis (if any)
     Q_D(QAbstractPhysicalDeviceBackendNode);
+    d->updatePendingAxisSettings();
+
+    // Find axis settings for this axis (if any)
     Qt3DCore::QNodeId axisSettingId;
     QVector<Input::AxisIdSetting>::const_iterator it;
     QVector<Input::AxisIdSetting>::const_iterator end = d->m_axisSettings.cend();
@@ -225,8 +255,8 @@ float QAbstractPhysicalDeviceBackendNode::processedAxisValue(int axisIdentifier)
         Q_ASSERT(axisSetting);
         float val = rawAxisValue;
 
-        // Low pass filtering
-        if (axisSetting->isFilterEnabled()) {
+        // Low pass smoothing
+        if (axisSetting->isSmoothEnabled()) {
             // Get the filter corresponding to this axis
             Input::MovingAverage &filter = d->getOrCreateFilter(axisIdentifier);
             filter.addSample(val);
@@ -234,7 +264,7 @@ float QAbstractPhysicalDeviceBackendNode::processedAxisValue(int axisIdentifier)
         }
 
         // Deadzone handling
-        const float d = axisSetting->deadZone();
+        const float d = axisSetting->deadZoneRadius();
         if (!qFuzzyIsNull(d)) {
             if (std::abs(val) <= d) {
                 val = 0.0f;

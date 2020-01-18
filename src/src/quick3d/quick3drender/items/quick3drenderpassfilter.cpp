@@ -1,40 +1,43 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "quick3drenderpassfilter_p.h"
+#include <Qt3DQuickRender/private/quick3drenderpassfilter_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -47,9 +50,9 @@ Quick3DRenderPassFilter::Quick3DRenderPassFilter(QObject *parent)
 {
 }
 
-QQmlListProperty<QAnnotation> Quick3DRenderPassFilter::includeList()
+QQmlListProperty<QFilterKey> Quick3DRenderPassFilter::includeList()
 {
-    return QQmlListProperty<QAnnotation>(this, 0,
+    return QQmlListProperty<QFilterKey>(this, 0,
                                          &Quick3DRenderPassFilter::appendInclude,
                                          &Quick3DRenderPassFilter::includesCount,
                                          &Quick3DRenderPassFilter::includeAt,
@@ -66,37 +69,38 @@ QQmlListProperty<QParameter> Quick3DRenderPassFilter::parameterList()
 
 }
 
-void Quick3DRenderPassFilter::appendInclude(QQmlListProperty<QAnnotation> *list, QAnnotation *annotation)
+void Quick3DRenderPassFilter::appendInclude(QQmlListProperty<QFilterKey> *list, QFilterKey *annotation)
 {
     Quick3DRenderPassFilter *filter = qobject_cast<Quick3DRenderPassFilter *>(list->object);
     if (filter) {
         annotation->setParent(filter->parentRenderPassFilter());
-        filter->parentRenderPassFilter()->addInclude(annotation);
+        filter->parentRenderPassFilter()->addMatch(annotation);
     }
 }
 
-QAnnotation *Quick3DRenderPassFilter::includeAt(QQmlListProperty<QAnnotation> *list, int index)
+QFilterKey *Quick3DRenderPassFilter::includeAt(QQmlListProperty<QFilterKey> *list, int index)
 {
     Quick3DRenderPassFilter *filter = qobject_cast<Quick3DRenderPassFilter *>(list->object);
     if (filter)
-        return filter->parentRenderPassFilter()->includes().at(index);
+        return filter->parentRenderPassFilter()->matchAny().at(index);
     return 0;
 }
 
-int Quick3DRenderPassFilter::includesCount(QQmlListProperty<QAnnotation> *list)
+int Quick3DRenderPassFilter::includesCount(QQmlListProperty<QFilterKey> *list)
 {
     Quick3DRenderPassFilter *filter = qobject_cast<Quick3DRenderPassFilter *>(list->object);
     if (filter)
-        return filter->parentRenderPassFilter()->includes().count();
+        return filter->parentRenderPassFilter()->matchAny().count();
     return 0;
 }
 
-void Quick3DRenderPassFilter::clearIncludes(QQmlListProperty<QAnnotation> *list)
+void Quick3DRenderPassFilter::clearIncludes(QQmlListProperty<QFilterKey> *list)
 {
     Quick3DRenderPassFilter *filter = qobject_cast<Quick3DRenderPassFilter *>(list->object);
     if (filter) {
-        Q_FOREACH (QAnnotation *criterion, filter->parentRenderPassFilter()->includes())
-            filter->parentRenderPassFilter()->removeInclude(criterion);
+        const auto criteria = filter->parentRenderPassFilter()->matchAny();
+        for (QFilterKey *criterion : criteria)
+            filter->parentRenderPassFilter()->removeMatch(criterion);
     }
 }
 
@@ -121,7 +125,8 @@ int Quick3DRenderPassFilter::parametersCount(QQmlListProperty<QParameter> *list)
 void Quick3DRenderPassFilter::clearParameterList(QQmlListProperty<QParameter> *list)
 {
     Quick3DRenderPassFilter *rPassFilter = qobject_cast<Quick3DRenderPassFilter *>(list->object);
-    Q_FOREACH (QParameter *p, rPassFilter->parentRenderPassFilter()->parameters())
+    const auto parameters = rPassFilter->parentRenderPassFilter()->parameters();
+    for (QParameter *p : parameters)
         rPassFilter->parentRenderPassFilter()->removeParameter(p);
 }
 

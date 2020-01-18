@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -58,16 +61,19 @@ namespace Qt3DRender {
   \endcode
  */
 
-QPointLightPrivate::QPointLightPrivate(QLight::Type type)
-    : QLightPrivate(type)
-    , m_attenuation(0.0f, 0.0f, 0.002f)
+QPointLightPrivate::QPointLightPrivate()
+    : QAbstractLightPrivate(QAbstractLight::PointLight)
 {
+    m_shaderData->setProperty("constantAttenuation", 1.0f);
+    m_shaderData->setProperty("linearAttenuation", 0.0f);
+    m_shaderData->setProperty("quadraticAttenuation", 0.0f);
 }
 
 /*!
   \class Qt3DRender::QPointLight
   \inmodule Qt3DRender
   \since 5.5
+    \brief Encapsulate a Point Light object in a Qt 3D scene.
 
  */
 
@@ -77,7 +83,7 @@ QPointLightPrivate::QPointLightPrivate(QLight::Type type)
     \inherits AbstractLight
     \inqmlmodule Qt3D.Render
     \since 5.5
-    \brief For OpenGL ...
+    \brief Encapsulate a Point Light object in a Qt 3D scene.
 */
 
 /*!
@@ -85,73 +91,90 @@ QPointLightPrivate::QPointLightPrivate(QLight::Type type)
   Constructs a new QPointLight with the specified \a parent.
  */
 QPointLight::QPointLight(QNode *parent)
-    : QLight(*new QPointLightPrivate, parent)
+    : QAbstractLight(*new QPointLightPrivate, parent)
+{
+}
+
+/*! \internal */
+QPointLight::~QPointLight()
 {
 }
 
 /*! \internal */
 QPointLight::QPointLight(QPointLightPrivate &dd, QNode *parent)
-    : QLight(dd, parent)
+    : QAbstractLight(dd, parent)
 {
 }
 
-QVector3D QPointLight::attenuation() const
-{
-    Q_D(const QPointLight);
-    return d->m_attenuation;
-}
+/*!
+  \qmlproperty float Qt3D.Render::PointLight::constantAttenuation
+    Specifies the constant attenuation of the point light
+*/
 
-void QPointLight::setAttenuation(const QVector3D &value)
-{
-    Q_D(QPointLight);
-    if (d->m_attenuation != value) {
-        d->m_attenuation = value;
-        emit attenuationChanged(value);
-    }
-}
-
+/*!
+  \property Qt3DRender::QPointLight::constantAttenuation
+    Specifies the constant attenuation of the point light
+ */
 float QPointLight::constantAttenuation() const
 {
     Q_D(const QPointLight);
-    return d->m_attenuation.x();
+    return d->m_shaderData->property("constantAttenuation").toFloat();
 }
 
 void QPointLight::setConstantAttenuation(float value)
 {
     Q_D(QPointLight);
-    if (d->m_attenuation.x() != value) {
-        d->m_attenuation.setX(value);
-        emit attenuationChanged(d->m_attenuation);
+    if (constantAttenuation() != value) {
+        d->m_shaderData->setProperty("constantAttenuation", value);
+        emit constantAttenuationChanged(value);
     }
 }
 
+/*!
+  \qmlproperty float Qt3D.Render::PointLight::linearAttenuation
+    Specifies the linear attenuation of the point light
+*/
+
+/*!
+  \property Qt3DRender::QPointLight::linearAttenuation
+    Specifies the linear attenuation of the point light
+ */
 float QPointLight::linearAttenuation() const
 {
     Q_D(const QPointLight);
-    return d->m_attenuation.y();
+    return d->m_shaderData->property("linearAttenuation").toFloat();
 }
 
 void QPointLight::setLinearAttenuation(float value)
 {
     Q_D(QPointLight);
-    if (d->m_attenuation.y() != value) {
-        d->m_attenuation.setY(value);
-        emit attenuationChanged(d->m_attenuation);
+    if (linearAttenuation() != value) {
+        d->m_shaderData->setProperty("linearAttenuation", value);
+        emit linearAttenuationChanged(value);
     }
 }
 
+/*!
+  \qmlproperty float Qt3D.Render::PointLight::quadraticAttenuation
+    Specifies the quadratic attenuation of the point light
+*/
+
+/*!
+  \property Qt3DRender::QPointLight::quadraticAttenuation
+    Specifies the quadratic attenuation of the point light
+ */
 float QPointLight::quadraticAttenuation() const
 {
     Q_D(const QPointLight);
-    return d->m_attenuation.z();
+    return d->m_shaderData->property("quadraticAttenuation").toFloat();
 }
 
 void QPointLight::setQuadraticAttenuation(float value)
 {
     Q_D(QPointLight);
-    if (d->m_attenuation.z() != value) {
-        d->m_attenuation.setZ(value);
-        emit attenuationChanged(d->m_attenuation);
+    if (quadraticAttenuation() != value) {
+        d->m_shaderData->setProperty("quadraticAttenuation", value);
+        emit quadraticAttenuationChanged(value);
     }
 }
 

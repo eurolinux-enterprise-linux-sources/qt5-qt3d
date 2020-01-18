@@ -1,1 +1,1 @@
-#include "../../src/core/qscenechange.h"
+#include "../../src/core/changes/qscenechange.h"

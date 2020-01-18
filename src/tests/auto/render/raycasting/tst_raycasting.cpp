@@ -1,34 +1,26 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -41,12 +33,13 @@
 #include <Qt3DRender/private/entity_p.h>
 #include <Qt3DRender/private/pickboundingvolumejob_p.h>
 #include <Qt3DRender/private/qboundingvolumeprovider_p.h>
-#include <Qt3DCore/qray3d.h>
-#include <Qt3DCore/qcamera.h>
+#include <Qt3DRender/private/qray3d_p.h>
+#include <Qt3DRender/qcamera.h>
 
 using namespace Qt3DCore;
 using namespace Qt3DRender;
 using namespace Qt3DRender::Render;
+using namespace Qt3DRender::RayCasting;
 
 class tst_RayCasting : public QObject
 {
@@ -318,10 +311,10 @@ Sphere *tst_RayCasting::volumeAt(int index)
 void tst_RayCasting::mousePicking()
 {
     // GIVEN
-    Qt3DCore::QCamera camera;
+    Qt3DRender::QCamera camera;
     camera.setProjectionType(QCameraLens::PerspectiveProjection);
     camera.setFieldOfView(45.0f);
-    camera.setAspectRatio(800.0/600.0f);
+    camera.setAspectRatio(800.0f/600.0f);
     camera.setNearPlane(0.1f);
     camera.setFarPlane(1000.0f);
     camera.setPosition(QVector3D(0.0f, 0.0f, -40.0f));
@@ -331,14 +324,14 @@ void tst_RayCasting::mousePicking()
     const QRectF viewport(0.0f, 0.0f, 800.0f, 600.0f);
 
     // Window center on near plane
-    Qt3DCore::QRay3D ray = Qt3DRender::Render::PickBoundingVolumeJob::intersectionRay(viewport.center().toPoint(),
-                                                                                      camera.viewMatrix(),
-                                                                                      camera.projectionMatrix(),
-                                                                                      viewport.toRect());
+    QRay3D ray = Qt3DRender::Render::PickBoundingVolumeJob::intersectionRay(viewport.center().toPoint(),
+                                                                            camera.viewMatrix(),
+                                                                            camera.projectionMatrix(),
+                                                                            viewport.toRect());
     Qt3DRender::Render::Sphere s(QVector3D(0.0f, 0.5f, 0.0f), 1.0f);
 
     // WHEN
-    bool intersects = s.intersects(ray, Q_NULLPTR);
+    bool intersects = s.intersects(ray, nullptr);
 
     // THEN
     QVERIFY(intersects);
@@ -348,7 +341,7 @@ void tst_RayCasting::mousePicking()
                                                                      camera.viewMatrix(),
                                                                      camera.projectionMatrix(),
                                                                      viewport.toRect());
-    intersects = s.intersects(ray, Q_NULLPTR);
+    intersects = s.intersects(ray, nullptr);
 
     // THEN
     QVERIFY(!intersects);
@@ -358,7 +351,7 @@ void tst_RayCasting::mousePicking()
                                                                      camera.viewMatrix(),
                                                                      camera.projectionMatrix(),
                                                                      viewport.toRect());
-    intersects = s.intersects(ray, Q_NULLPTR);
+    intersects = s.intersects(ray, nullptr);
 
     // THEN
     QVERIFY(!intersects);
@@ -368,7 +361,7 @@ void tst_RayCasting::mousePicking()
                                                                      camera.viewMatrix(),
                                                                      camera.projectionMatrix(),
                                                                      viewport.toRect());
-    intersects = s.intersects(ray, Q_NULLPTR);
+    intersects = s.intersects(ray, nullptr);
 
     // THEN
     QVERIFY(!intersects);
@@ -378,7 +371,7 @@ void tst_RayCasting::mousePicking()
                                                                      camera.viewMatrix(),
                                                                      camera.projectionMatrix(),
                                                                      viewport.toRect());
-    intersects = s.intersects(ray, Q_NULLPTR);
+    intersects = s.intersects(ray, nullptr);
 
     // THEN
     QVERIFY(!intersects);

@@ -1,40 +1,43 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "quick3dtechniquefilter_p.h"
+#include <Qt3DQuickRender/private/quick3dtechniquefilter_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -47,9 +50,9 @@ Quick3DTechniqueFilter::Quick3DTechniqueFilter(QObject *parent)
 {
 }
 
-QQmlListProperty<QAnnotation> Quick3DTechniqueFilter::requireList()
+QQmlListProperty<QFilterKey> Quick3DTechniqueFilter::matchList()
 {
-    return QQmlListProperty<QAnnotation>(this, 0,
+    return QQmlListProperty<QFilterKey>(this, 0,
                                          &Quick3DTechniqueFilter::appendRequire,
                                          &Quick3DTechniqueFilter::requiresCount,
                                          &Quick3DTechniqueFilter::requireAt,
@@ -65,37 +68,38 @@ QQmlListProperty<QParameter> Quick3DTechniqueFilter::parameterList()
                                         &Quick3DTechniqueFilter::clearParameterList);
 }
 
-void Quick3DTechniqueFilter::appendRequire(QQmlListProperty<QAnnotation> *list, QAnnotation *criterion)
+void Quick3DTechniqueFilter::appendRequire(QQmlListProperty<QFilterKey> *list, QFilterKey *criterion)
 {
     Quick3DTechniqueFilter *filter = qobject_cast<Quick3DTechniqueFilter *>(list->object);
     if (filter) {
         criterion->setParent(filter->parentTechniqueFilter());
-        filter->parentTechniqueFilter()->addRequirement(criterion);
+        filter->parentTechniqueFilter()->addMatch(criterion);
     }
 }
 
-QAnnotation *Quick3DTechniqueFilter::requireAt(QQmlListProperty<QAnnotation> *list, int index)
+QFilterKey *Quick3DTechniqueFilter::requireAt(QQmlListProperty<QFilterKey> *list, int index)
 {
     Quick3DTechniqueFilter *filter = qobject_cast<Quick3DTechniqueFilter *>(list->object);
     if (filter)
-        return filter->parentTechniqueFilter()->criteria().at(index);
+        return filter->parentTechniqueFilter()->matchAll().at(index);
     return 0;
 }
 
-int Quick3DTechniqueFilter::requiresCount(QQmlListProperty<QAnnotation> *list)
+int Quick3DTechniqueFilter::requiresCount(QQmlListProperty<QFilterKey> *list)
 {
     Quick3DTechniqueFilter *filter = qobject_cast<Quick3DTechniqueFilter *>(list->object);
     if (filter)
-        return filter->parentTechniqueFilter()->criteria().size();
+        return filter->parentTechniqueFilter()->matchAll().size();
     return 0;
 }
 
-void Quick3DTechniqueFilter::clearRequires(QQmlListProperty<QAnnotation> *list)
+void Quick3DTechniqueFilter::clearRequires(QQmlListProperty<QFilterKey> *list)
 {
     Quick3DTechniqueFilter *filter = qobject_cast<Quick3DTechniqueFilter *>(list->object);
     if (filter) {
-        Q_FOREACH (QAnnotation *criterion, filter->parentTechniqueFilter()->criteria())
-            filter->parentTechniqueFilter()->removeRequirement(criterion);
+        const auto criteria = filter->parentTechniqueFilter()->matchAll();
+        for (QFilterKey *criterion : criteria)
+            filter->parentTechniqueFilter()->removeMatch(criterion);
     }
 }
 
@@ -120,7 +124,8 @@ int Quick3DTechniqueFilter::parametersCount(QQmlListProperty<QParameter> *list)
 void Quick3DTechniqueFilter::clearParameterList(QQmlListProperty<QParameter> *list)
 {
     Quick3DTechniqueFilter *techniqueFilter = qobject_cast<Quick3DTechniqueFilter *>(list->object);
-    Q_FOREACH (QParameter *p, techniqueFilter->parentTechniqueFilter()->parameters())
+    const auto parameters = techniqueFilter->parentTechniqueFilter()->parameters();
+    for (QParameter *p : parameters)
         techniqueFilter->parentTechniqueFilter()->removeParameter(p);
 }
 

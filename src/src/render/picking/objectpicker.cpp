@@ -1,44 +1,49 @@
 /****************************************************************************
 **
 ** Copyright (C) 2015 Paul Lemire paul.lemire350@gmail.com
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "objectpicker_p.h"
+#include "qpickevent.h"
+#include "renderer_p.h"
 #include <Qt3DRender/qobjectpicker.h>
+#include <Qt3DRender/private/qobjectpicker_p.h>
 #include <Qt3DRender/qattribute.h>
-#include <Qt3DCore/qscenepropertychange.h>
-#include <Qt3DCore/qbackendscenepropertychange.h>
+#include <Qt3DCore/qpropertyupdatedchange.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -47,101 +52,126 @@ namespace Qt3DRender {
 namespace Render {
 
 ObjectPicker::ObjectPicker()
-    : QBackendNode(QBackendNode::ReadWrite)
-    , m_isDirty(false)
+    : BackendNode(QBackendNode::ReadWrite)
+    , m_isPressed(false)
     , m_hoverEnabled(false)
+    , m_dragEnabled(false)
 {
 }
 
 ObjectPicker::~ObjectPicker()
 {
+    notifyJob();
 }
 
 void ObjectPicker::cleanup()
 {
-    m_isDirty = false;
+    BackendNode::setEnabled(false);
+    m_isPressed = false;
     m_hoverEnabled = false;
+    m_dragEnabled = false;
+    notifyJob();
 }
 
-void ObjectPicker::updateFromPeer(Qt3DCore::QNode *peer)
+void ObjectPicker::initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change)
 {
-    QObjectPicker *picker = static_cast<QObjectPicker *>(peer);
-    if (picker) {
-        m_hoverEnabled = picker->hoverEnabled();
-        m_isDirty = true;
-    }
+    const auto typedChange = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<QObjectPickerData>>(change);
+    const auto &data = typedChange->data;
+    m_hoverEnabled = data.hoverEnabled;
+    m_dragEnabled = data.dragEnabled;
+    notifyJob();
+}
+
+void ObjectPicker::notifyJob()
+{
+    if (m_renderer && m_renderer->pickBoundingVolumeJob())
+        qSharedPointerCast<PickBoundingVolumeJob>(m_renderer->pickBoundingVolumeJob())->markPickersDirty();
 }
 
 void ObjectPicker::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &e)
 {
-    const Qt3DCore::QScenePropertyChangePtr propertyChange = qSharedPointerCast<Qt3DCore::QScenePropertyChange>(e);
-    const QByteArray propertyName = propertyChange->propertyName();
+    if (e->type() == Qt3DCore::PropertyUpdated) {
+        const Qt3DCore::QPropertyUpdatedChangePtr propertyChange = qSharedPointerCast<Qt3DCore::QPropertyUpdatedChange>(e);
 
-    if (propertyChange->type() == Qt3DCore::NodeUpdated) {
-        if (propertyName == QByteArrayLiteral("hoverEnabled")) {
+        if (propertyChange->propertyName() == QByteArrayLiteral("hoverEnabled")) {
             m_hoverEnabled = propertyChange->value().toBool();
-            m_isDirty = true;
+        } else if (propertyChange->propertyName() == QByteArrayLiteral("dragEnabled")) {
+            m_dragEnabled = propertyChange->value().toBool();
         }
+
+        markDirty(AbstractRenderer::AllDirty);
+        notifyJob();
     }
+
+    BackendNode::sceneChangeEvent(e);
 }
 
-bool ObjectPicker::isDirty() const
+bool ObjectPicker::isPressed() const
 {
-    return m_isDirty;
+    return m_isPressed;
 }
 
-void ObjectPicker::unsetDirty()
-{
-    m_isDirty = false;
-}
-
-void ObjectPicker::makeDirty()
-{
-    m_isDirty = true;
-}
-
-bool ObjectPicker::hoverEnabled() const
+bool ObjectPicker::isHoverEnabled() const
 {
     return m_hoverEnabled;
 }
 
-void ObjectPicker::onClicked()
+bool ObjectPicker::isDragEnabled() const
 {
-    Qt3DCore::QBackendScenePropertyChangePtr e(new Qt3DCore::QBackendScenePropertyChange(Qt3DCore::NodeUpdated, peerUuid()));
+    return m_dragEnabled;
+}
+
+void ObjectPicker::onClicked(QPickEventPtr event)
+{
+    auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(peerId());
+    e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
     e->setPropertyName("clicked");
-    e->setTargetNode(peerUuid());
+    e->setValue(QVariant::fromValue(event));
     notifyObservers(e);
 }
 
-void ObjectPicker::onPressed()
+void ObjectPicker::onMoved(QPickEventPtr event)
 {
-    Qt3DCore::QBackendScenePropertyChangePtr e(new Qt3DCore::QBackendScenePropertyChange(Qt3DCore::NodeUpdated, peerUuid()));
+    auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(peerId());
+    e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
+    e->setPropertyName("moved");
+    e->setValue(QVariant::fromValue(event));
+    notifyObservers(e);
+}
+
+void ObjectPicker::onPressed(QPickEventPtr event)
+{
+    auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(peerId());
+    e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
     e->setPropertyName("pressed");
-    e->setTargetNode(peerUuid());
+    e->setValue(QVariant::fromValue(event));
+    m_isPressed = true;
     notifyObservers(e);
 }
 
-void ObjectPicker::onReleased()
+void ObjectPicker::onReleased(QPickEventPtr event)
 {
-    Qt3DCore::QBackendScenePropertyChangePtr e(new Qt3DCore::QBackendScenePropertyChange(Qt3DCore::NodeUpdated, peerUuid()));
+    auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(peerId());
+    e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
     e->setPropertyName("released");
-    e->setTargetNode(peerUuid());
+    e->setValue(QVariant::fromValue(event));
+    m_isPressed = false;
     notifyObservers(e);
 }
 
 void ObjectPicker::onEntered()
 {
-    Qt3DCore::QBackendScenePropertyChangePtr e(new Qt3DCore::QBackendScenePropertyChange(Qt3DCore::NodeUpdated, peerUuid()));
+    auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(peerId());
+    e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
     e->setPropertyName("entered");
-    e->setTargetNode(peerUuid());
     notifyObservers(e);
 }
 
 void ObjectPicker::onExited()
 {
-    Qt3DCore::QBackendScenePropertyChangePtr e(new Qt3DCore::QBackendScenePropertyChange(Qt3DCore::NodeUpdated, peerUuid()));
+    auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(peerId());
+    e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
     e->setPropertyName("exited");
-    e->setTargetNode(peerUuid());
     notifyObservers(e);
 }
 

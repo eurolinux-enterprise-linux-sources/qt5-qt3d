@@ -1,34 +1,37 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
 ** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
 ** packaging of this file. Please review the following information to
 ** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,16 +51,17 @@
 // We mean it.
 //
 
-#include <QObject>
-#include <QFlags>
-#include <QReadWriteLock>
-#include <QVariant>
-#include <QVector>
-#include <QPair>
-#include <QThreadStorage>
-#include <QMutex>
 #include <Qt3DCore/qnodeid.h>
 #include <Qt3DCore/qscenechange.h>
+#include <QtCore/QFlags>
+#include <QtCore/QMutex>
+#include <QtCore/QObject>
+#include <QtCore/QPair>
+#include <QtCore/QReadWriteLock>
+#include <QtCore/QThreadStorage>
+#include <QtCore/QVariant>
+#include <QtCore/QVector>
+
 #include <Qt3DCore/private/qlockableobserverinterface_p.h>
 #include <Qt3DCore/private/qt3dcore_global_p.h>
 
@@ -93,10 +97,10 @@ public:
     void syncChanges();
 
     void registerObserver(QObserverInterface *observer,
-                          const QNodeId &nodeId,
+                          QNodeId nodeId,
                           ChangeFlags changeFlags = AllChanges);
     void unregisterObserver(QObserverInterface *observer,
-                            const QNodeId &nodeId);
+                            QNodeId nodeId);
 
     void registerSceneObserver(QSceneObserverInterface *observer);
     void unregisterSceneObserver(QSceneObserverInterface *observer);
@@ -133,14 +137,8 @@ private:
     QMutex m_mutex;
     QAbstractAspectJobManager *m_jobManager;
 
-    // The lists of observers indexed by observable. We maintain two
-    // distinct hashes:
-    //
-    // m_aspectObservations is for observables owned by aspects
+    // The lists of observers indexed by observable (QNodeId).
     // m_nodeObservations is for observables in the main thread's object tree
-    //
-    // We keep these distinct because we do not manage the main thread which means
-    // the mechanisms for working with objects there is different.
     QHash<QNodeId, QObserverList> m_nodeObservations;
     QList<QSceneObserverInterface *> m_sceneObservers;
 

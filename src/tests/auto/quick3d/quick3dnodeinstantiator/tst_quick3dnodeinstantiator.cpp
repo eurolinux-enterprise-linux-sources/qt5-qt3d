@@ -2,34 +2,26 @@
 **
 ** Copyright (C) 2013 Research In Motion.
 ** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the Qt3D module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL3$
+** $QT_BEGIN_LICENSE:GPL-EXCEPT$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
+** General Public License version 3 as published by the Free Software
+** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -58,6 +50,7 @@ private slots:
     void createNone();
     void createSingle();
     void createMultiple();
+    void createNested();
     void stringModel();
     void activeProperty();
     void intModelChange();
@@ -68,7 +61,9 @@ void tst_quick3dnodeinstantiator::createNone()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("createNone.qml"));
-    Quick3DNodeInstantiator *instantiator = qobject_cast<Quick3DNodeInstantiator*>(component.create());
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+    const auto instantiator = root->findChild<Quick3DNodeInstantiator*>();
     QVERIFY(instantiator != 0);
     QCOMPARE(instantiator->isActive(), true);
     QCOMPARE(instantiator->count(), 0);
@@ -80,7 +75,9 @@ void tst_quick3dnodeinstantiator::createSingle()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("createSingle.qml"));
-    Quick3DNodeInstantiator *instantiator = qobject_cast<Quick3DNodeInstantiator*>(component.create());
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+    const auto instantiator = root->findChild<Quick3DNodeInstantiator*>();
     QVERIFY(instantiator != 0);
     QCOMPARE(instantiator->isActive(), true);
     QCOMPARE(instantiator->count(), 1);
@@ -88,7 +85,7 @@ void tst_quick3dnodeinstantiator::createSingle()
 
     QObject *object = instantiator->object();
     QVERIFY(object);
-    QCOMPARE(object->parent(), instantiator);
+    QCOMPARE(object->parent(), root);
     QCOMPARE(object->property("success").toBool(), true);
     QCOMPARE(object->property("idx").toInt(), 0);
 }
@@ -97,7 +94,9 @@ void tst_quick3dnodeinstantiator::createMultiple()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("createMultiple.qml"));
-    Quick3DNodeInstantiator *instantiator = qobject_cast<Quick3DNodeInstantiator*>(component.create());
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+    const auto instantiator = root->findChild<Quick3DNodeInstantiator*>();
     QVERIFY(instantiator != 0);
     QCOMPARE(instantiator->isActive(), true);
     QCOMPARE(instantiator->count(), 10);
@@ -105,9 +104,37 @@ void tst_quick3dnodeinstantiator::createMultiple()
     for (int i = 0; i < 10; i++) {
         QObject *object = instantiator->objectAt(i);
         QVERIFY(object);
-        QCOMPARE(object->parent(), instantiator);
+        QCOMPARE(object->parent(), root);
         QCOMPARE(object->property("success").toBool(), true);
         QCOMPARE(object->property("idx").toInt(), i);
+    }
+}
+
+void tst_quick3dnodeinstantiator::createNested()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("createNested.qml"));
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+
+    auto instantiators = root->findChildren<Quick3DNodeInstantiator*>();
+    QCOMPARE(instantiators.count(), 4);
+
+    const auto outerInstantiator = instantiators.takeFirst();
+    QCOMPARE(outerInstantiator->isActive(), true);
+    QCOMPARE(outerInstantiator->count(), 3);
+
+    for (const auto instantiator : instantiators) {
+        QCOMPARE(instantiator->isActive(), true);
+        QCOMPARE(instantiator->count(), 4);
+
+        for (int i = 0; i < 4; i++) {
+            auto object = instantiator->objectAt(i);
+            QVERIFY(object);
+            QCOMPARE(object->parent(), root);
+            QCOMPARE(object->property("success").toBool(), true);
+            QCOMPARE(object->property("idx").toInt(), i);
+        }
     }
 }
 
@@ -115,7 +142,9 @@ void tst_quick3dnodeinstantiator::stringModel()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("stringModel.qml"));
-    Quick3DNodeInstantiator *instantiator = qobject_cast<Quick3DNodeInstantiator*>(component.create());
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+    const auto instantiator = root->findChild<Quick3DNodeInstantiator*>();
     QVERIFY(instantiator != 0);
     QCOMPARE(instantiator->isActive(), true);
     QCOMPARE(instantiator->count(), 4);
@@ -123,7 +152,7 @@ void tst_quick3dnodeinstantiator::stringModel()
     for (int i = 0; i < 4; i++) {
         QObject *object = instantiator->objectAt(i);
         QVERIFY(object);
-        QCOMPARE(object->parent(), instantiator);
+        QCOMPARE(object->parent(), root);
         QCOMPARE(object->property("success").toBool(), true);
     }
 }
@@ -132,7 +161,9 @@ void tst_quick3dnodeinstantiator::activeProperty()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("inactive.qml"));
-    Quick3DNodeInstantiator *instantiator = qobject_cast<Quick3DNodeInstantiator*>(component.create());
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+    const auto instantiator = root->findChild<Quick3DNodeInstantiator*>();
     QVERIFY(instantiator != 0);
     QSignalSpy activeSpy(instantiator, SIGNAL(activeChanged()));
     QSignalSpy countSpy(instantiator, SIGNAL(countChanged()));
@@ -158,7 +189,7 @@ void tst_quick3dnodeinstantiator::activeProperty()
 
     QObject *object = instantiator->object();
     QVERIFY(object);
-    QCOMPARE(object->parent(), instantiator);
+    QCOMPARE(object->parent(), root);
     QCOMPARE(object->property("success").toBool(), true);
     QCOMPARE(object->property("idx").toInt(), 0);
 }
@@ -167,7 +198,9 @@ void tst_quick3dnodeinstantiator::intModelChange()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("createMultiple.qml"));
-    Quick3DNodeInstantiator *instantiator = qobject_cast<Quick3DNodeInstantiator*>(component.create());
+    const auto root = qobject_cast<Qt3DCore::QNode*>(component.create());
+    QVERIFY(root != 0);
+    const auto instantiator = root->findChild<Quick3DNodeInstantiator*>();
     QVERIFY(instantiator != 0);
     QSignalSpy activeSpy(instantiator, SIGNAL(activeChanged()));
     QSignalSpy countSpy(instantiator, SIGNAL(countChanged()));
@@ -191,7 +224,7 @@ void tst_quick3dnodeinstantiator::intModelChange()
     for (int i = 0; i < 2; i++) {
         QObject *object = instantiator->objectAt(i);
         QVERIFY(object);
-        QCOMPARE(object->parent(), instantiator);
+        QCOMPARE(object->parent(), root);
         QCOMPARE(object->property("success").toBool(), true);
         QCOMPARE(object->property("idx").toInt(), i);
     }

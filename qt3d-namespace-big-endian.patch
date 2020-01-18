@@ -1,0 +1,11 @@
+diff -up qt3d-opensource-src-5.9.0-beta3/src/3rdparty/assimp/code/glTFAsset.inl.than qt3d-opensource-src-5.9.0-beta3/src/3rdparty/assimp/code/glTFAsset.inl
+--- qt3d-opensource-src-5.9.0-beta3/src/3rdparty/assimp/code/glTFAsset.inl.than	2017-05-10 11:48:47.727867274 -0400
++++ qt3d-opensource-src-5.9.0-beta3/src/3rdparty/assimp/code/glTFAsset.inl	2017-05-10 11:48:29.407529841 -0400
+@@ -40,6 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ 
+ #include "StringUtils.h"
+ 
++using namespace Assimp;
+ namespace glTF {
+ 
+ namespace {
